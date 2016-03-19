@@ -2,11 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.IO;
-using System.Net.Http.Headers;
 using System.Net.Test.Common;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
@@ -218,6 +217,19 @@ namespace System.Net.Http.Functional.Tests
                         false,
                         null);
                 }
+            }
+        }
+
+        [Theory, MemberData(nameof(CompressedServers))]
+        public async Task GetAsync_DefaultAutomaticDecompression_HeadersRemoved(Uri server)
+        {
+            using (var client = new HttpClient())
+            using (HttpResponseMessage response = await client.GetAsync(server, HttpCompletionOption.ResponseHeadersRead))
+            {
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+                Assert.False(response.Content.Headers.Contains("Content-Encoding"), "Content-Encoding unexpectedly found");
+                Assert.False(response.Content.Headers.Contains("Content-Length"), "Content-Length unexpectedly found");
             }
         }
 
@@ -465,6 +477,85 @@ namespace System.Net.Http.Functional.Tests
             }
         }
 
+        private static KeyValuePair<string, string> GenerateCookie(string name, char repeat, int overallHeaderValueLength)
+        {
+            string emptyHeaderValue = $"{name}=; Path=/";
+
+            Debug.Assert(overallHeaderValueLength > emptyHeaderValue.Length);
+
+            int valueCount = overallHeaderValueLength - emptyHeaderValue.Length;
+            string value = new string(repeat, valueCount);
+
+            return new KeyValuePair<string, string>(name, value);
+        }
+
+        public static object[][] CookieNameValues =
+        {
+            // WinHttpHandler calls WinHttpQueryHeaders to iterate through multiple Set-Cookie header values,
+            // using an initial buffer size of 128 chars. If the buffer is not large enough, WinHttpQueryHeaders
+            // returns an insufficient buffer error, allowing WinHttpHandler to try again with a larger buffer.
+            // Sometimes when WinHttpQueryHeaders fails due to insufficient buffer, it still advances the
+            // iteration index, which would cause header values to be missed if not handled correctly.
+            //
+            // In particular, WinHttpQueryHeader behaves as follows for the following header value lengths:
+            //  * 0-127 chars: succeeds, index advances from 0 to 1.
+            //  * 128-255 chars: fails due to insufficient buffer, index advances from 0 to 1.
+            //  * 256+ chars: fails due to insufficient buffer, index stays at 0.
+            //
+            // The below overall header value lengths were chosen to exercise reading header values at these
+            // edges, to ensure WinHttpHandler does not miss multiple Set-Cookie headers.
+
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 126) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 127) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 128) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 129) },
+
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 254) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 255) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 256) },
+            new object[] { GenerateCookie(name: "foo", repeat: 'a', overallHeaderValueLength: 257) },
+
+            new object[]
+            {
+                new KeyValuePair<string, string>(
+                    ".AspNetCore.Antiforgery.Xam7_OeLcN4",
+                    "CfDJ8NGNxAt7CbdClq3UJ8_6w_4661wRQZT1aDtUOIUKshbcV4P0NdS8klCL5qGSN-PNBBV7w23G6MYpQ81t0PMmzIN4O04fqhZ0u1YPv66mixtkX3iTi291DgwT3o5kozfQhe08-RAExEmXpoCbueP_QYM")
+            }
+        };
+
+        [Theory]
+        [MemberData(nameof(CookieNameValues))]
+        public async Task GetAsync_ResponseWithSetCookieHeaders_AllCookiesRead(KeyValuePair<string, string> cookie1)
+        {
+            var cookie2 = new KeyValuePair<string, string>(".AspNetCore.Session", "RAExEmXpoCbueP_QYM");
+            var cookie3 = new KeyValuePair<string, string>("name", "value");
+
+            string url = string.Format(
+                "http://httpbin.org/cookies/set?{0}={1}&{2}={3}&{4}={5}",
+                cookie1.Key,
+                cookie1.Value,
+                cookie2.Key,
+                cookie2.Value,
+                cookie3.Key,
+                cookie3.Value);
+
+            var handler = new HttpClientHandler()
+            {
+                AllowAutoRedirect = false
+            };
+
+            using (var client = new HttpClient(handler))
+            using (HttpResponseMessage response = await client.GetAsync(url))
+            {
+                CookieCollection cookies = handler.CookieContainer.GetCookies(new Uri(url));
+
+                Assert.Equal(3, handler.CookieContainer.Count);
+                Assert.Equal(cookie1.Value, cookies[cookie1.Key].Value);
+                Assert.Equal(cookie2.Value, cookies[cookie2.Key].Value);
+                Assert.Equal(cookie3.Value, cookies[cookie3.Key].Value);
+            }
+        }
+
         [Fact]
         public async Task GetAsync_ResponseHeadersRead_ReadFromEachIterativelyDoesntDeadlock()
         {
@@ -696,20 +787,20 @@ namespace System.Net.Http.Functional.Tests
             }
         }
 
-        [Fact]
-        public async Task GetAsync_CallMethod_ExpectedStatusLine()
+        [Theory]
+        [InlineData(HttpStatusCode.MethodNotAllowed, "Custom description")]
+        [InlineData(HttpStatusCode.MethodNotAllowed, "")]
+        public async Task GetAsync_CallMethod_ExpectedStatusLine(HttpStatusCode statusCode, string reasonPhrase)
         {
-            HttpStatusCode expectedStatusCode = HttpStatusCode.MethodNotAllowed;
-            string expectedReasonPhrase = "Custom descrption";
             using (var client = new HttpClient())
             {
                 using (HttpResponseMessage response = await client.GetAsync(HttpTestServers.StatusCodeUri(
                     false,
-                    (int)expectedStatusCode,
-                    expectedReasonPhrase)))
+                    (int)statusCode,
+                    reasonPhrase)))
                 {
-                    Assert.Equal(expectedStatusCode, response.StatusCode);
-                    Assert.Equal(expectedReasonPhrase, response.ReasonPhrase);
+                    Assert.Equal(statusCode, response.StatusCode);
+                    Assert.Equal(reasonPhrase, response.ReasonPhrase);
                 }
             }
         }
@@ -841,6 +932,149 @@ namespace System.Net.Http.Functional.Tests
             {
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 return response.Version;
+            }
+        }
+        #endregion
+
+        #region SSL Version tests
+        [Theory]
+        [InlineData("SSLv2", HttpTestServers.SSLv2RemoteServer)]
+        [InlineData("SSLv3", HttpTestServers.SSLv3RemoteServer)]
+        public async Task GetAsync_UnsupportedSSLVersion_Throws(string name, string url)
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(url));
+            }
+        }
+
+        [Theory]
+        [InlineData("TLSv1.0", HttpTestServers.TLSv10RemoteServer)]
+        [InlineData("TLSv1.1", HttpTestServers.TLSv11RemoteServer)]
+        [InlineData("TLSv1.2", HttpTestServers.TLSv12RemoteServer)]
+        public async Task GetAsync_SupportedSSLVersion_Succeeds(string name, string url)
+        {
+            using (HttpClient client = new HttpClient())
+            using (await client.GetAsync(url))
+            {
+            }
+        }
+        #endregion
+
+        #region Proxy tests
+        [Theory]
+        [MemberData(nameof(CredentialsForProxy))]
+        public void Proxy_BypassFalse_GetRequestGoesThroughCustomProxy(ICredentials creds, bool wrapCredsInCache)
+        {
+            int port;
+            Task<LoopbackGetRequestHttpProxy.ProxyResult> proxyTask = LoopbackGetRequestHttpProxy.StartAsync(
+                out port,
+                requireAuth: creds != null && creds != CredentialCache.DefaultCredentials,
+                expectCreds: true);
+            Uri proxyUrl = new Uri($"http://localhost:{port}");
+
+            const string BasicAuth = "Basic";
+            if (wrapCredsInCache)
+            {
+                Assert.IsAssignableFrom<NetworkCredential>(creds);
+                var cache = new CredentialCache();
+                cache.Add(proxyUrl, BasicAuth, (NetworkCredential)creds);
+                creds = cache;
+            }
+
+            using (var handler = new HttpClientHandler() { Proxy = new UseSpecifiedUriWebProxy(proxyUrl, creds) })
+            using (var client = new HttpClient(handler))
+            {
+                Task<HttpResponseMessage> responseTask = client.GetAsync(HttpTestServers.RemoteEchoServer);
+                Task<string> responseStringTask = responseTask.ContinueWith(t => t.Result.Content.ReadAsStringAsync(), TaskScheduler.Default).Unwrap();
+                Task.WaitAll(proxyTask, responseTask, responseStringTask);
+
+                TestHelper.VerifyResponseBody(responseStringTask.Result, responseTask.Result.Content.Headers.ContentMD5, false, null);
+                Assert.Equal(Encoding.ASCII.GetString(proxyTask.Result.ResponseContent), responseStringTask.Result);
+
+                NetworkCredential nc = creds?.GetCredential(proxyUrl, BasicAuth);
+                string expectedAuth =
+                    nc == null || nc == CredentialCache.DefaultCredentials ? null :
+                    string.IsNullOrEmpty(nc.Domain) ? $"{nc.UserName}:{nc.Password}" :
+                    $"{nc.Domain}\\{nc.UserName}:{nc.Password}";
+                Assert.Equal(expectedAuth, proxyTask.Result.AuthenticationHeaderValue);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(BypassedProxies))]
+        public async Task Proxy_BypassTrue_GetRequestDoesntGoesThroughCustomProxy(IWebProxy proxy)
+        {
+            using (var client = new HttpClient(new HttpClientHandler() { Proxy = proxy }))
+            using (HttpResponseMessage response = await client.GetAsync(HttpTestServers.RemoteEchoServer))
+            {
+                TestHelper.VerifyResponseBody(
+                    await response.Content.ReadAsStringAsync(),
+                    response.Content.Headers.ContentMD5,
+                    false,
+                    null);
+            }
+        }
+
+        [Fact]
+        public void Proxy_HaveNoCredsAndUseAuthenticatedCustomProxy_ProxyAuthenticationRequiredStatusCode()
+        {
+            int port;
+            Task<LoopbackGetRequestHttpProxy.ProxyResult> proxyTask = LoopbackGetRequestHttpProxy.StartAsync(
+                out port,
+                requireAuth: true,
+                expectCreds: false);
+            Uri proxyUrl = new Uri($"http://localhost:{port}");
+
+            using (var handler = new HttpClientHandler() { Proxy = new UseSpecifiedUriWebProxy(proxyUrl, null) })
+            using (var client = new HttpClient(handler))
+            {
+                Task<HttpResponseMessage> responseTask = client.GetAsync(HttpTestServers.RemoteEchoServer);
+                Task.WaitAll(proxyTask, responseTask);
+
+                Assert.Equal(HttpStatusCode.ProxyAuthenticationRequired, responseTask.Result.StatusCode);
+            }
+        }        
+
+        private sealed class UseSpecifiedUriWebProxy : IWebProxy
+        {
+            private readonly Uri _uri;
+            private readonly bool _bypass;
+
+            public UseSpecifiedUriWebProxy(Uri uri, ICredentials credentials = null, bool bypass = false)
+            {
+                _uri = uri;
+                _bypass = bypass;
+                Credentials = credentials;
+            }
+
+            public ICredentials Credentials { get; set; }
+            public Uri GetProxy(Uri destination) => _uri;
+            public bool IsBypassed(Uri host) => _bypass;
+        }
+
+        private sealed class PlatformNotSupportedWebProxy : IWebProxy
+        {
+            public ICredentials Credentials { get; set; }
+            public Uri GetProxy(Uri destination) { throw new PlatformNotSupportedException(); }
+            public bool IsBypassed(Uri host) { throw new PlatformNotSupportedException(); }
+        }
+
+        private static IEnumerable<object[]> BypassedProxies()
+        {
+            yield return new object[] { null };
+            yield return new object[] { new PlatformNotSupportedWebProxy() };
+            yield return new object[] { new UseSpecifiedUriWebProxy(new Uri($"http://{Guid.NewGuid().ToString().Substring(0, 15)}:12345"), bypass: true) };
+        }
+
+        private static IEnumerable<object[]> CredentialsForProxy()
+        {
+            yield return new object[] { null, false };
+            foreach (bool wrapCredsInCache in new[] { true, false })
+            {
+                yield return new object[] { CredentialCache.DefaultCredentials, wrapCredsInCache };
+                yield return new object[] { new NetworkCredential("username", "password"), wrapCredsInCache };
+                yield return new object[] { new NetworkCredential("username", "password", "domain"), wrapCredsInCache };
             }
         }
         #endregion

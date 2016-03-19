@@ -9,15 +9,15 @@
     <ProjectGuid>{AEF718E9-D4FC-418F-A7AE-ED6B2C7B3787}</ProjectGuid>
     <AssemblyName>System.Linq.Expressions</AssemblyName>
     <RootNamespace>System.Linq.Expressions</RootNamespace>
-    <AssemblyVersion>4.0.11.0</AssemblyVersion>
+    <AssemblyVersion>4.0.10.0</AssemblyVersion>
     <PackageTargetFramework Condition="'$(PackageTargetFramework)' == ''">netstandard1.3</PackageTargetFramework>
     <IsInterpreting Condition="'$(PackageTargetFramework)' == 'netcore50'">true</IsInterpreting>
     <DefineConstants Condition=" '$(IsInterpreting)' != 'true' ">$(DefineConstants);FEATURE_COMPILE</DefineConstants>
     <DefineConstants Condition=" '$(FeatureInterpret)' == 'true' ">$(DefineConstants);FEATURE_INTERPRET</DefineConstants>
     <IsPartialFacadeAssembly Condition="'$(TargetGroup)' == 'net46'">true</IsPartialFacadeAssembly>
     <ResourcesSourceOutputDirectory Condition="'$(TargetGroup)' == 'net46'">None</ResourcesSourceOutputDirectory>
+    <NuGetTargetMoniker Condition="'$(TargetGroup)' == ''">.NETStandard,Version=v1.3</NuGetTargetMoniker>
   </PropertyGroup>
-
   <!-- Default configurations to help VS understand the configurations -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'" />
@@ -27,7 +27,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'netcore50_Release|AnyCPU'" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'net46_Debug|AnyCPU'" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'net46_Release|AnyCPU'" />
-
   <!-- netcore50 project.json fork is shared for both netcore50 and netcore50aot. This redirects netcore50aot. -->
   <PropertyGroup Condition="'$(TargetGroup)' == 'netcore50aot'">
     <ProjectJson>netcore50/project.json</ProjectJson>

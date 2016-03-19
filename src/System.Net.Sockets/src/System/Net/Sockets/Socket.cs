@@ -1691,6 +1691,7 @@ namespace System.Net.Sockets
                 throw new InvalidOperationException(SR.net_sockets_mustbind);
             }
 
+            SocketPal.CheckDualModeReceiveSupport(this);
             ValidateBlockingMode();
 
             // We don't do a CAS demand here because the contents of remoteEP aren't used by
@@ -1783,6 +1784,8 @@ namespace System.Net.Sockets
             {
                 throw new InvalidOperationException(SR.net_sockets_mustbind);
             }
+
+            SocketPal.CheckDualModeReceiveSupport(this);
 
             ValidateBlockingMode();
             if (GlobalLog.IsEnabled)
@@ -1891,8 +1894,14 @@ namespace System.Net.Sockets
 
             int realOptionLength = 0;
 
+            //
+            // IOControl is used for Windows-specific IOCTL operations.  If we need to add support for IOCTLs specific
+            // to other platforms, we will likely need to add a new API, as the control codes may overlap with those 
+            // from Windows.  Generally it would be preferable to add new methods/properties to abstract these across
+            // platforms, however.
+            //
             // This can throw ObjectDisposedException.
-            SocketError errorCode = SocketPal.Ioctl(_handle, ioControlCode, optionInValue, optionOutValue, out realOptionLength);
+            SocketError errorCode = SocketPal.WindowsIoctl(_handle, ioControlCode, optionInValue, optionOutValue, out realOptionLength);
 
             if (GlobalLog.IsEnabled)
             {
@@ -1918,39 +1927,6 @@ namespace System.Net.Sockets
         public int IOControl(IOControlCode ioControlCode, byte[] optionInValue, byte[] optionOutValue)
         {
             return IOControl(unchecked((int)ioControlCode), optionInValue, optionOutValue);
-        }
-
-        internal int IOControl(IOControlCode ioControlCode, IntPtr optionInValue, int inValueSize, IntPtr optionOutValue, int outValueSize)
-        {
-            if (CleanedUp)
-            {
-                throw new ObjectDisposedException(this.GetType().FullName);
-            }
-
-            int realOptionLength = 0;
-
-            // This can throw ObjectDisposedException.
-            SocketError errorCode = SocketPal.IoctlInternal(_handle, ioControlCode, optionInValue, inValueSize, optionOutValue, outValueSize, out realOptionLength);
-
-            if (GlobalLog.IsEnabled)
-            {
-                GlobalLog.Print("Socket#" + LoggingHash.HashString(this) + "::IOControl() Interop.Winsock.WSAIoctl returns errorCode:" + errorCode);
-            }
-
-            // Throw an appropriate SocketException if the native call fails.
-            if (errorCode != SocketError.Success)
-            {
-                // Update the internal state of this socket according to the error before throwing.
-                SocketException socketException = new SocketException((int)errorCode);
-                UpdateStatusAfterSocketError(socketException);
-                if (s_loggingEnabled)
-                {
-                    NetEventSource.Exception(NetEventSource.ComponentType.Socket, this, "IOControl", socketException);
-                }
-                throw socketException;
-            }
-
-            return realOptionLength;
         }
 
         // Sets the specified option to the specified value.
@@ -3519,6 +3495,7 @@ namespace System.Net.Sockets
                 throw new InvalidOperationException(SR.net_sockets_mustbind);
             }
 
+            SocketPal.CheckDualModeReceiveSupport(this);
 
             // Set up the result and set it to collect the context.
             ReceiveMessageOverlappedAsyncResult asyncResult = new ReceiveMessageOverlappedAsyncResult(this, state, callback);
@@ -3775,6 +3752,8 @@ namespace System.Net.Sockets
             {
                 throw new InvalidOperationException(SR.net_sockets_mustbind);
             }
+
+            SocketPal.CheckDualModeReceiveSupport(this);
 
             // We don't do a CAS demand here because the contents of remoteEP aren't used by
             // WSARecvFrom; all that matters is that we generate a unique-to-this-call SocketAddress
@@ -4599,6 +4578,8 @@ namespace System.Net.Sockets
                 throw new ArgumentException(SR.Format(SR.net_InvalidEndPointAddressFamily, e.RemoteEndPoint.AddressFamily, _addressFamily), "RemoteEndPoint");
             }
 
+            SocketPal.CheckDualModeReceiveSupport(this);
+
             // We don't do a CAS demand here because the contents of remoteEP aren't used by
             // WSARecvFrom; all that matters is that we generate a unique-to-this-call SocketAddress
             // with the right address family.
@@ -4673,6 +4654,8 @@ namespace System.Net.Sockets
             {
                 throw new ArgumentException(SR.Format(SR.net_InvalidEndPointAddressFamily, e.RemoteEndPoint.AddressFamily, _addressFamily), "RemoteEndPoint");
             }
+
+            SocketPal.CheckDualModeReceiveSupport(this);
 
             // We don't do a CAS demand here because the contents of remoteEP aren't used by
             // WSARecvMsg; all that matters is that we generate a unique-to-this-call SocketAddress
@@ -5694,20 +5677,11 @@ namespace System.Net.Sockets
             // called if _rightEndPoint is not null, of that the endpoint is an IPEndPoint.
             if (_rightEndPoint == null)
             {
-                if (endPointSnapshot.GetType() != typeof(IPEndPoint))
-                {
-                    if (GlobalLog.IsEnabled)
-                    {
-                        GlobalLog.AssertFormat("Socket#{0}::BeginConnectEx()|Socket not bound and endpoint not IPEndPoint.", LoggingHash.HashString(this));
-                    }
-                    Debug.Fail("Socket#" + LoggingHash.HashString(this) + "::BeginConnectEx()|Socket not bound and endpoint not IPEndPoint.");
-                }
-
                 if (endPointSnapshot.AddressFamily == AddressFamily.InterNetwork)
                 {
                     InternalBind(new IPEndPoint(IPAddress.Any, 0));
                 }
-                else
+                else if (endPointSnapshot.AddressFamily != AddressFamily.Unix)
                 {
                     InternalBind(new IPEndPoint(IPAddress.IPv6Any, 0));
                 }

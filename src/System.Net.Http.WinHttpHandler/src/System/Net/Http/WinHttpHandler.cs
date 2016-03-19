@@ -995,8 +995,10 @@ nameof(value),
                     }
                     else if (_proxyHelper != null && _proxyHelper.AutoSettingsUsed)
                     {
-                        updateProxySettings = true;
-                        _proxyHelper.GetProxyForUrl(_sessionHandle, uri, out proxyInfo);
+                        if (_proxyHelper.GetProxyForUrl(_sessionHandle, uri, out proxyInfo))
+                        {
+                            updateProxySettings = true;
+                        }
                     }
 
                     if (updateProxySettings)
@@ -1274,13 +1276,16 @@ nameof(value),
             SafeWinHttpHandle requestHandle,
             Interop.WinHttp.WINHTTP_STATUS_CALLBACK callback)
         {
-            // TODO: Issue #5036. Having the status callback use WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS
-            // isn't strictly necessary. However, some of the notification flags are required.
-            // This will be addressed this as part of WinHttpHandler performance improvements.
+            const uint notificationFlags =
+                Interop.WinHttp.WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS |
+                Interop.WinHttp.WINHTTP_CALLBACK_FLAG_HANDLES |
+                Interop.WinHttp.WINHTTP_CALLBACK_FLAG_REDIRECT |
+                Interop.WinHttp.WINHTTP_CALLBACK_FLAG_SEND_REQUEST;
+
             IntPtr oldCallback = Interop.WinHttp.WinHttpSetStatusCallback(
                 requestHandle,
                 callback,
-                Interop.WinHttp.WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS,
+                notificationFlags,
                 IntPtr.Zero);
 
             if (oldCallback == new IntPtr(Interop.WinHttp.WINHTTP_INVALID_STATUS_CALLBACK))

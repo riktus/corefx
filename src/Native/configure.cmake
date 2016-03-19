@@ -16,7 +16,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
     include_directories(SYSTEM /usr/local/include)
 elseif (CMAKE_SYSTEM_NAME STREQUAL NetBSD)
     set(PAL_UNIX_NAME \"NETBSD\")
-    include_directories(SYSTEM /usr/pkg/include)
 else ()
     message(FATAL_ERROR "Unknown platform.  Cannot define PAL_UNIX_NAME, used by RuntimeInformation.")
 endif ()
@@ -365,6 +364,10 @@ check_include_files(
     linux/rtnetlink.h
     HAVE_LINUX_RTNETLINK_H)
 
+check_function_exists(
+    getpeereid
+    HAVE_GETPEEREID)
+
 # getdomainname on OSX takes an 'int' instead of a 'size_t'
 # check if compiling with 'size_t' would cause a warning
 set (PREVIOUS_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
@@ -418,10 +421,21 @@ check_cxx_source_compiles(
     "
     HAVE_CURLPIPE_MULTIPLEX)
 
-check_symbol_exists(
-    OPEN_MAX
-    "sys/syslimits.h"
-    HAVE_OPEN_MAX)
+check_include_files(
+    GSS/GSS.h
+    HAVE_GSSFW_HEADERS)
+
+if (HAVE_GSSFW_HEADERS)
+    check_symbol_exists(
+        GSS_SPNEGO_MECHANISM
+        "GSS/GSS.h"
+        HAVE_GSS_SPNEGO_MECHANISM)
+else ()
+    check_symbol_exists(
+        GSS_SPNEGO_MECHANISM
+        "gssapi/gssapi.h"
+        HAVE_GSS_SPNEGO_MECHANISM)
+endif ()
 
 set (CMAKE_REQUIRED_LIBRARIES)
 

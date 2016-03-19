@@ -247,21 +247,20 @@ namespace System.Data.SqlClient
         public string SourceColumn { get { return default(string); } set { } }
         public int SourceOrdinal { get { return default(int); } set { } }
     }
-    public sealed partial class SqlBulkCopyColumnMappingCollection : System.Collections.CollectionBase
+    public sealed partial class SqlBulkCopyColumnMappingCollection
     {
         internal SqlBulkCopyColumnMappingCollection() { }
+        public System.Data.SqlClient.SqlBulkCopyColumnMapping this[int index] { get { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); } }
         public System.Data.SqlClient.SqlBulkCopyColumnMapping Add(System.Data.SqlClient.SqlBulkCopyColumnMapping bulkCopyColumnMapping) { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); }
         public System.Data.SqlClient.SqlBulkCopyColumnMapping Add(int sourceColumnIndex, int destinationColumnIndex) { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); }
         public System.Data.SqlClient.SqlBulkCopyColumnMapping Add(int sourceColumnIndex, string destinationColumn) { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); }
         public System.Data.SqlClient.SqlBulkCopyColumnMapping Add(string sourceColumn, int destinationColumnIndex) { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); }
         public System.Data.SqlClient.SqlBulkCopyColumnMapping Add(string sourceColumn, string destinationColumn) { return default(System.Data.SqlClient.SqlBulkCopyColumnMapping); }
-        public new void Clear() { }
         public bool Contains(System.Data.SqlClient.SqlBulkCopyColumnMapping value) { return default(bool); }
         public void CopyTo(System.Data.SqlClient.SqlBulkCopyColumnMapping[] array, int index) { }
         public int IndexOf(System.Data.SqlClient.SqlBulkCopyColumnMapping value) { return default(int); }
         public void Insert(int index, System.Data.SqlClient.SqlBulkCopyColumnMapping value) { }
         public void Remove(System.Data.SqlClient.SqlBulkCopyColumnMapping value) { }
-        public new void RemoveAt(int index) { }
     }
     [System.FlagsAttribute]
     public enum SqlBulkCopyOptions

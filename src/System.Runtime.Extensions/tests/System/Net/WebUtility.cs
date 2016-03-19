@@ -3,9 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
-
 using Xunit;
-    
+
 namespace System.Net.Tests
 {
     public class WebUtilityTests
@@ -20,7 +19,7 @@ namespace System.Net.Tests
         }
 
         [Theory]
-        [MemberData("HtmlDecode_TestData")]
+        [MemberData(nameof(HtmlDecode_TestData))]
         public static void HtmlDecode(string value, string expected)
         {
             Assert.Equal(expected, WebUtility.HtmlDecode(value));
@@ -40,7 +39,7 @@ namespace System.Net.Tests
         }
 
         [Theory]
-        [MemberData("HtmlEncode_TestData")]
+        [MemberData(nameof(HtmlEncode_TestData))]
         public static void HtmlEncode(string value, string expected)
         {
             Assert.Equal(expected, WebUtility.HtmlEncode(value));
@@ -55,7 +54,7 @@ namespace System.Net.Tests
         }
 
         [Theory]
-        [MemberData("UrlDecode_TestData")]
+        [MemberData(nameof(UrlDecode_TestData))]
         public static void UrlDecode(string encodedValue, string expected)
         {
             Assert.Equal(expected, WebUtility.UrlDecode(encodedValue));
@@ -70,7 +69,7 @@ namespace System.Net.Tests
         }
 
         [Theory]
-        [MemberData("UrlEncode_TestData")]
+        [MemberData(nameof(UrlEncode_TestData))]
         public static void UrlEncode(string value, string expected)
         {
             Assert.Equal(expected, WebUtility.UrlEncode(value));

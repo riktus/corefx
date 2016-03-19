@@ -3,9 +3,13 @@
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.props))\dir.props" />
   <ItemGroup>
     <ProjectReference Include="..\ref\System.Security.AccessControl.csproj">
-      <SupportedFramework>net46;dnxcore50</SupportedFramework>
+      <SupportedFramework>net46;netstandardapp1.5</SupportedFramework>
     </ProjectReference>
     <ProjectReference Include="..\src\System.Security.AccessControl.builds" />
+
+    <NotSupportedOnTargetFramework Include="netcore50">
+      <PackageTargetRuntime>win</PackageTargetRuntime>
+    </NotSupportedOnTargetFramework> 
   </ItemGroup>
 
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" />

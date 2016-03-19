@@ -15,6 +15,7 @@ namespace System.IO.Pipes
 {
     public abstract partial class PipeStream : Stream
     {
+        internal const string AnonymousPipeName = "anonymous";
         private static readonly Task<int> s_zeroTask = Task.FromResult(0);
 
         private SafePipeHandle _handle;
@@ -108,11 +109,6 @@ namespace System.IO.Pipes
             // track these separately; _isHandleExposed will get updated if accessed though the property
             _isHandleExposed = isExposed;
             _isFromExistingHandle = isExposed;
-        }
-
-        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
-        {
-            return StreamHelpers.ArrayPoolCopyToAsync(this, destination, bufferSize, cancellationToken);
         }
 
         [SecurityCritical]
