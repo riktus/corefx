@@ -547,6 +547,7 @@ namespace System.Net.Http.Functional.Tests
             using (var client = new HttpClient(handler))
             using (HttpResponseMessage response = await client.GetAsync(url))
             {
+                Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
                 CookieCollection cookies = handler.CookieContainer.GetCookies(new Uri(url));
 
                 Assert.Equal(3, handler.CookieContainer.Count);
@@ -564,7 +565,7 @@ namespace System.Net.Http.Functional.Tests
                 const int NumGets = 5;
                 Task<HttpResponseMessage>[] responseTasks = (from _ in Enumerable.Range(0, NumGets)
                                                              select client.GetAsync(HttpTestServers.RemoteEchoServer, HttpCompletionOption.ResponseHeadersRead)).ToArray();
-                for (int i = responseTasks.Length - 1; i >= 0; i--) // read backwards to increase liklihood that we wait on a different task than has data available
+                for (int i = responseTasks.Length - 1; i >= 0; i--) // read backwards to increase likelihood that we wait on a different task than has data available
                 {
                     using (HttpResponseMessage response = await responseTasks[i])
                     {
@@ -806,7 +807,6 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
-        [ActiveIssue(3565, PlatformID.OSX)]
         public async Task PostAsync_Post_ChannelBindingHasExpectedValue()
         {
             using (var client = new HttpClient())

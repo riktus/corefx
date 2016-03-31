@@ -6,6 +6,7 @@
     <IsPartialFacadeAssembly Condition="'$(TargetGroup)' != 'netcore50aot'">true</IsPartialFacadeAssembly>
     <AssemblyName>System.Collections</AssemblyName>
     <AssemblyVersion>4.0.10.0</AssemblyVersion>
+    <AssemblyVersion Condition="'$(AssemblyVersionTransition)' == 'true'">4.0.11.0</AssemblyVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageTargetFramework Condition="'$(PackageTargetFramework)' == ''">netstandard1.3</PackageTargetFramework>
     <NuGetTargetMoniker Condition="'$(TargetGroup)' == ''">.NETStandard,Version=v1.3</NuGetTargetMoniker>
@@ -19,8 +20,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'netcore50aotao_Release|AnyCPU'" />
   <ItemGroup Condition="'$(TargetGroup)' == ''">
     <ProjectReference Include="..\..\System.Runtime\src\System.Runtime.csproj" />
-    <ProjectReference Include="..\..\System.Diagnostics.Debug\src\System.Diagnostics.Debug.csproj">
-      <OSGroup>Windows_NT</OSGroup>
+    <ProjectReference Include="..\..\System.Diagnostics.Debug\src\System.Diagnostics.Debug.csproj" >
+      <OSGroup>$(InputOSGroup)</OSGroup>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup Condition="'$(TargetGroup)' != 'net46'">

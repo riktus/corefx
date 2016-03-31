@@ -25,7 +25,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
 
             var task1 = ExecuteCommandWithNewConnectionAsync("A", "SELECT top 10 * FROM Orders", executedProcessList);
             var task2 = ExecuteCommandWithNewConnectionAsync("B", "SELECT top 10 * FROM Products", executedProcessList);
-            //wait all before verifing the results
+            //wait all before verifying the results
             Task.WaitAll(task1, task2);
 
             //verify whether it executed async
@@ -52,8 +52,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
             await conn.OpenAsync();
             var cmd = new SqlCommand(cmdText, conn);
 
-
-            using (SqlDataReader reader = await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection))
+            using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {
@@ -75,7 +74,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
                 conn.Open();
                 var task1 = ExecuteCommandWithSharedConnectionAsync(conn, "C", "SELECT top 10 * FROM Orders", executedProcessList);
                 var task2 = ExecuteCommandWithSharedConnectionAsync(conn, "D", "SELECT top 10 * FROM Products", executedProcessList);
-                //wait all before verifing the results
+                //wait all before verifying the results
                 Task.WaitAll(task1, task2);
             }
 
@@ -87,7 +86,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
         {
             var cmd = new SqlCommand(cmdText, conn);
 
-            using (SqlDataReader reader = await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection))
+            using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {

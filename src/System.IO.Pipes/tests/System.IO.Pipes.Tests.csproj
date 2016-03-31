@@ -16,6 +16,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IncludePerformanceTests>true</IncludePerformanceTests>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetsWindows)' == 'true'">
+    <ProjectJson>win/project.json</ProjectJson>
+    <ProjectLockJson>win/project.lock.json</ProjectLockJson>
+  </PropertyGroup>
   <!-- Default configurations to help VS understand the configurations -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
   </PropertyGroup>
@@ -31,6 +35,7 @@
     <Compile Include="AnonymousPipeTests\AnonymousPipeTest.Specific.cs" />
     <Compile Include="AnonymousPipeTests\AnonymousPipeTest.Write.cs" />
     <Compile Include="Interop.cs" />
+    <Compile Condition="'$(TargetsUnix)' == 'true'" Include="NativeOverlapped.unix.cs" />
     <Compile Include="NamedPipeTests\NamedPipeTest.CreateServer.cs" />
     <Compile Include="NamedPipeTests\NamedPipeTest.CreateClient.cs" />
     <Compile Include="NamedPipeTests\NamedPipeTest.CrossProcess.cs" />
@@ -82,17 +87,6 @@
       <Project>{16ee5522-f387-4c9e-9ef2-b5134b043f37}</Project>
       <Name>System.IO.Pipes</Name>
     </ProjectReference>
-
-    <!-- TODO: Remove these once packages are updated to include recent changes to SocketErrorPal -->
-    <ProjectReference Include="..\..\System.Net.Sockets\src\System.Net.Sockets.csproj">
-      <Project>{43311AFB-D7C4-4E5A-B1DE-855407F90D1B}</Project>
-      <Name>System.Net.Sockets</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\System.Net.Primitives\src\System.Net.Primitives.csproj">
-      <Project>{8772BC91-7B55-49B9-94FA-4B1BE5BEAB55}</Project>
-      <Name>System.Net.Primitives</Name>
-    </ProjectReference>
-
   </ItemGroup>
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" />
 </Project>

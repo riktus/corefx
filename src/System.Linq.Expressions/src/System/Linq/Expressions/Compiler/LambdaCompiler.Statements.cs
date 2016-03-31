@@ -232,7 +232,7 @@ namespace System.Linq.Expressions.Compiler
         }
 
         /// <summary>
-        /// Gets the common test test value type of the SwitchExpression.
+        /// Gets the common test value type of the SwitchExpression.
         /// </summary>
         private static Type GetTestValueType(SwitchExpression node)
         {
@@ -399,7 +399,7 @@ namespace System.Linq.Expressions.Compiler
 
                 foreach (ConstantExpression test in node.Cases[i].TestValues)
                 {
-                    // Guarenteed to work thanks to CanOptimizeSwitchType.
+                    // Guaranteed to work thanks to CanOptimizeSwitchType.
                     //
                     // Use decimal because it can hold Int64 or UInt64 without
                     // precision loss or signed/unsigned conversions.

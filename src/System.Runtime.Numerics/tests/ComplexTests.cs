@@ -105,7 +105,7 @@ namespace System.Numerics.Tests
             yield return new object[] { RandomNegativeDouble(), RandomPositiveDouble(), RandomNegativeDouble(), RandomPositiveDouble() };
             // Second quadrant, third quadrant
             yield return new object[] { RandomNegativeDouble(), RandomPositiveDouble(), RandomNegativeDouble(), RandomNegativeDouble() };
-            // Second quadrant, fouth quadrant
+            // Second quadrant, fourth quadrant
             yield return new object[] { RandomNegativeDouble(), RandomPositiveDouble(), RandomPositiveDouble(), RandomNegativeDouble() };
             // Third quadrant, third quadrant
             yield return new object[] { RandomNegativeDouble(), RandomNegativeDouble(), RandomPositiveDouble(), RandomNegativeDouble() };
@@ -137,7 +137,7 @@ namespace System.Numerics.Tests
             yield return new object[] { SmallRandomNegativeDouble(), SmallRandomPositiveDouble(), SmallRandomNegativeDouble(), SmallRandomPositiveDouble() };
             // Second quadrant, third quadrant
             yield return new object[] { SmallRandomNegativeDouble(), SmallRandomPositiveDouble(), SmallRandomNegativeDouble(), SmallRandomNegativeDouble() };
-            // Second quadrant, fouth quadrant
+            // Second quadrant, fourth quadrant
             yield return new object[] { SmallRandomNegativeDouble(), SmallRandomPositiveDouble(), SmallRandomPositiveDouble(), SmallRandomNegativeDouble() };
             // Third quadrant, third quadrant
             yield return new object[] { SmallRandomNegativeDouble(), SmallRandomNegativeDouble(), SmallRandomPositiveDouble(), SmallRandomNegativeDouble() };
@@ -768,7 +768,7 @@ namespace System.Numerics.Tests
         [Fact]
         public static void Exp_MaxReal()
         {
-            // On Windows, the result is {double.PostiveInfinity, double.NaN}
+            // On Windows, the result is {double.PositiveInfinity, double.NaN}
             // On Unix, the result is {double.NegativeInfinity, double.NaN}
             // Which one is incorrect should be determined.
             var complex = new Complex(double.MaxValue, 0);

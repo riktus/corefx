@@ -7,6 +7,7 @@
   <PropertyGroup>
     <AssemblyName>System.Net.Primitives</AssemblyName>
     <AssemblyVersion>4.0.10.0</AssemblyVersion>
+    <AssemblyVersion Condition="'$(AssemblyVersionTransition)' == 'true'">4.0.11.0</AssemblyVersion>
     <OutputType>Library</OutputType>
     <ProjectGuid>{8772BC91-7B55-49B9-94FA-4B1BE5BEAB55}</ProjectGuid>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,7 +15,7 @@
     <IsPartialFacadeAssembly Condition="'$(TargetGroup)' == 'net46'">true</IsPartialFacadeAssembly>
     <PackageTargetFramework Condition="'$(PackageTargetFramework)' == ''">netstandard1.3</PackageTargetFramework>
     <PackageTargetFramework Condition="'$(TargetsWindows)' == 'true' AND '$(EnableWinRT)' == 'true'">netcore50</PackageTargetFramework>
-    <PackageTargetRuntime Condition="'$(TargetsWindows)' == 'true' and '$(TargetGroup)' == ''">win7</PackageTargetRuntime>
+    <PackageTargetRuntime Condition="'$(TargetsWindows)' == 'true' and '$(TargetGroup)' != 'net46'">win7</PackageTargetRuntime>
     <PackageTargetRuntime Condition="'$(TargetsUnix)' == 'true' and '$(TargetGroup)' == ''">unix</PackageTargetRuntime>
     <NuGetTargetMoniker Condition="'$(TargetGroup)' == ''">.NETStandard,Version=v1.3</NuGetTargetMoniker>
   </PropertyGroup>
@@ -89,6 +90,9 @@
     </Compile>
     <Compile Include="$(CommonPath)\System\Net\NetworkInformation\HostInformation.cs">
       <Link>Common\System\Net\NetworkInformation\HostInformation.cs</Link>
+    </Compile>
+    <Compile Include="$(CommonPath)\System\IO\StringBuilderCache.cs">
+      <Link>Common\System\IO\StringBuilderCache.cs</Link>
     </Compile>
     <!-- Logging -->
     <Compile Include="$(CommonPath)\System\Net\Shims\TraceSource.cs">

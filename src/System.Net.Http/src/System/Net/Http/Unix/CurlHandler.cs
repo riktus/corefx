@@ -5,7 +5,9 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Security;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -60,6 +62,8 @@ namespace System.Net.Http
         private readonly static bool s_supportsAutomaticDecompression;
         private readonly static bool s_supportsSSL;
         private readonly static bool s_supportsHttp2Multiplexing;
+        private static string s_curlVersionDescription;
+        private static string s_curlSslVersionDescription;
 
         private readonly static DiagnosticListener s_diagnosticListener = new DiagnosticListener(HttpHandlerLoggingStrings.DiagnosticListenerName);
 
@@ -78,6 +82,9 @@ namespace System.Net.Http
         private bool _automaticRedirection = HttpHandlerDefaults.DefaultAutomaticRedirection;
         private int _maxAutomaticRedirections = HttpHandlerDefaults.DefaultMaxAutomaticRedirections;
         private ClientCertificateOption _clientCertificateOption = HttpHandlerDefaults.DefaultClientCertificateOption;
+        private X509Certificate2Collection _clientCertificates;
+        private Func<HttpRequestMessage, X509Certificate2, X509Chain, SslPolicyErrors, bool> _serverCertificateValidationCallback;
+        private bool _checkCertificateRevocationList;
 
         private object LockObject { get { return _agent; } }
 
@@ -87,24 +94,21 @@ namespace System.Net.Http
         {
             // curl_global_init call handled by Interop.LibCurl's cctor
 
-            int age;
-            if (!Interop.Http.GetCurlVersionInfo(
-                out age, 
-                out s_supportsSSL, 
-                out s_supportsAutomaticDecompression, 
-                out s_supportsHttp2Multiplexing))
-            {
-                throw new InvalidOperationException(SR.net_http_unix_https_libcurl_no_versioninfo);  
-            }
+            Interop.Http.CurlFeatures features = Interop.Http.GetSupportedFeatures();
+            s_supportsSSL = (features & Interop.Http.CurlFeatures.CURL_VERSION_SSL) != 0;
+            s_supportsAutomaticDecompression = (features & Interop.Http.CurlFeatures.CURL_VERSION_LIBZ) != 0;
+            s_supportsHttp2Multiplexing = (features & Interop.Http.CurlFeatures.CURL_VERSION_HTTP2) != 0 && Interop.Http.GetSupportsHttp2Multiplexing();
 
-            // Verify the version of curl we're using is new enough
-            if (age < MinCurlAge)
+            if (HttpEventSource.Log.IsEnabled())
             {
-                throw new InvalidOperationException(SR.net_http_unix_https_libcurl_too_old);
+                EventSourceTrace($"libcurl: {CurlVersionDescription} {CurlSslVersionDescription} {features}");
             }
         }
 
         #region Properties
+
+        private static string CurlVersionDescription => s_curlVersionDescription ?? (s_curlVersionDescription = Interop.Http.GetVersionDescription() ?? string.Empty);
+        private static string CurlSslVersionDescription => s_curlSslVersionDescription ?? (s_curlSslVersionDescription = Interop.Http.GetSslVersionDescription() ?? string.Empty);
 
         internal bool AutomaticRedirection
         {
@@ -188,6 +192,31 @@ namespace System.Net.Http
             {
                 CheckDisposedOrStarted();
                 _clientCertificateOption = value;
+            }
+        }
+
+        internal X509Certificate2Collection ClientCertificates
+        {
+            get { return _clientCertificates ?? (_clientCertificates = new X509Certificate2Collection()); }
+        }
+
+        internal Func<HttpRequestMessage, X509Certificate2, X509Chain, SslPolicyErrors, bool> ServerCertificateValidationCallback
+        {
+            get { return _serverCertificateValidationCallback; }
+            set
+            {
+                CheckDisposedOrStarted();
+                _serverCertificateValidationCallback = value;
+            }
+        }
+
+        public bool CheckCertificateRevocationList
+        {
+            get { return _checkCertificateRevocationList; }
+            set
+            {
+                CheckDisposedOrStarted();
+                _checkCertificateRevocationList = value;
             }
         }
 
@@ -314,7 +343,7 @@ nameof(value),
             {
                 if (!s_supportsSSL)
                 {
-                    throw new PlatformNotSupportedException(SR.net_http_unix_https_support_unavailable_libcurl);
+                    throw new PlatformNotSupportedException(SR.Format(SR.net_http_unix_https_support_unavailable_libcurl, CurlVersionDescription));
                 }
             }
             else
@@ -503,7 +532,7 @@ nameof(value),
                         }
                         else if(!AreEqualNetworkCredentials(nc, networkCredential))
                         {
-                            throw new PlatformNotSupportedException(SR.net_http_unix_invalid_credential);
+                            throw new PlatformNotSupportedException(SR.Format(SR.net_http_unix_invalid_credential, CurlVersionDescription));
                         }
                     }
                 }
@@ -688,7 +717,7 @@ nameof(value),
             Debug.Assert(requestContent != null, "request is null");
 
             // Deal with conflict between 'Content-Length' vs. 'Transfer-Encoding: chunked' semantics.
-            // libcurl adds a Tranfer-Encoding header by default and the request fails if both are set.
+            // libcurl adds a Transfer-Encoding header by default and the request fails if both are set.
             if (requestContent.Headers.ContentLength.HasValue)
             {
                 if (chunkedMode)
