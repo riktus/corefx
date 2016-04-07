@@ -85,6 +85,13 @@ namespace System.Linq.Expressions.Tests
         C
     }
 
+    public enum Eu : uint
+    {
+        Foo,
+        Bar,
+        Baz
+    }
+
     public struct S : IEquatable<S>
     {
         public override bool Equals(object o)
