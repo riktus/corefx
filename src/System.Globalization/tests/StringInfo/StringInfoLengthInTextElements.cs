@@ -2,9 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Xunit;
 
 namespace System.Globalization.Tests
@@ -24,7 +22,7 @@ namespace System.Globalization.Tests
         }
 
         [Theory]
-        [MemberData("LengthInTextElements_TestData")]
+        [MemberData(nameof(LengthInTextElements_TestData))]
         public void LengthInTextElements(string value, int expected)
         {
             Assert.Equal(expected, new StringInfo(value).LengthInTextElements);

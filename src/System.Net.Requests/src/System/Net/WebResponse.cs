@@ -2,8 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections;
-using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Contracts;
 using System.IO;
 
@@ -12,7 +10,7 @@ namespace System.Net
     /// <devdoc>
     ///    <para>
     ///       A
-    ///       response from a Uniform Resource Indentifier (Uri). This is an abstract class.
+    ///       response from a Uniform Resource Identifier (Uri). This is an abstract class.
     ///    </para>
     /// </devdoc>
     public abstract class WebResponse : IDisposable

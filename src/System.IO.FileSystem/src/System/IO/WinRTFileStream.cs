@@ -127,7 +127,7 @@ namespace System.IO
 
                 if ((_options & FileOptions.DeleteOnClose) != 0 && _file != null)
                 {
-                    // WinRT doesn't directly support DeleteOnClose but we can mimick it
+                    // WinRT doesn't directly support DeleteOnClose but we can mimic it
                     // There are a few reasons that this will fail
                     //   1) the file may not allow delete permissions for the current user
                     //   2) the storage file RCW may have already been disconnected
@@ -201,7 +201,7 @@ namespace System.IO
             }
             else if (_innerStream.Length != value)
             {
-                throw new ArgumentException(nameof(value));
+                throw new ArgumentException(SR.Argument_FileNotResized, nameof(value));
             }
 
             // WinRT doesn't update the position when truncating a file

@@ -24,11 +24,13 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #if defined(__APPLE__) && __APPLE__
 #include <sys/socketvar.h>
 #endif
 #include <unistd.h>
 #include <vector>
+#include <pwd.h>
 
 #if HAVE_KQUEUE
 #if KEVENT_HAS_VOID_UDATA
@@ -1344,6 +1346,10 @@ static bool GetMulticastOptionName(int32_t multicastOption, bool isIPv6, int& op
             optionName = isIPv6 ? IPV6_DROP_MEMBERSHIP : IP_DROP_MEMBERSHIP;
             return true;
 
+        case PAL_MULTICAST_IF:
+            optionName = IP_MULTICAST_IF;
+            return true;
+
         default:
             return false;
     }
@@ -1405,6 +1411,10 @@ extern "C" Error SystemNative_SetIPv4MulticastOption(int32_t socket, int32_t mul
 #else
     ip_mreq opt = {.imr_multiaddr = {.s_addr = option->MulticastAddress},
                    .imr_interface = {.s_addr = option->LocalAddress}};
+    if (option->InterfaceIndex != 0)
+    {
+        return PAL_ENOPROTOOPT;
+    }
 #endif
     int err = setsockopt(socket, IPPROTO_IP, optionName, &opt, sizeof(opt));
     return err == 0 ? PAL_SUCCESS : SystemNative_ConvertErrorPlatformToPal(errno);
@@ -2149,157 +2159,6 @@ extern "C" Error SystemNative_Socket(int32_t addressFamily, int32_t socketType, 
     return *createdSocket != -1 ? PAL_SUCCESS : SystemNative_ConvertErrorPlatformToPal(errno);
 }
 
-const int FD_SETSIZE_BYTES = FD_SETSIZE / 8;
-
-#if !HAVE_FDS_BITS && !HAVE_PRIVATE_FDS_BITS
-const int FD_SETSIZE_UINTS = FD_SETSIZE_BYTES / sizeof(uint32_t);
-#endif
-
-static void ConvertFdSetPlatformToPal(uint32_t* palSet, fd_set& platformSet, int32_t fdCount)
-{
-    assert(fdCount >= 0);
-
-    memset(palSet, 0, FD_SETSIZE_BYTES);
-
-#if !HAVE_FDS_BITS && !HAVE_PRIVATE_FDS_BITS
-    for (int i = 0; i < fdCount; i++)
-    {
-        uint32_t* word = &palSet[i / FD_SETSIZE_UINTS];
-        uint32_t mask = 1 << (i % FD_SETSIZE_UINTS);
-
-        if (FD_ISSET(i, &platformSet))
-        {
-            *word |= mask;
-        }
-        else
-        {
-            *word &= ~mask;
-        }
-    }
-#else
-    size_t bytesToCopy = static_cast<size_t>((fdCount / 8) + ((fdCount % 8) != 0 ? 1 : 0));
-
-    uint8_t* source;
-#if HAVE_FDS_BITS
-    source = reinterpret_cast<uint8_t*>(&platformSet.fds_bits[0]);
-#elif HAVE_PRIVATE_FDS_BITS
-    source = reinterpret_cast<uint8_t*>(&platformSet.__fds_bits[0]);
-#endif
-
-    memcpy(palSet, source, bytesToCopy);
-#endif
-}
-
-static void ConvertFdSetPalToPlatform(fd_set& platformSet, uint32_t* palSet, int32_t fdCount)
-{
-    assert(fdCount >= 0);
-
-    memset(&platformSet, 0, sizeof(platformSet));
-
-#if !HAVE_FDS_BITS && !HAVE_PRIVATE_FDS_BITS
-    for (int i = 0; i < fdCount; i++)
-    {
-        int word = i / FD_SETSIZE_UINTS;
-        int bit = i % FD_SETSIZE_UINTS;
-        if ((palSet[word] & (1 << bit)) == 0)
-        {
-            FD_CLR(i, &platformSet);
-        }
-        else
-        {
-            FD_SET(i, &platformSet);
-        }
-    }
-#else
-
-    size_t bytesToCopy = static_cast<size_t>((fdCount / 8) + ((fdCount % 8) != 0 ? 1 : 0));
-
-    uint8_t* dest;
-#if HAVE_FDS_BITS
-    dest = reinterpret_cast<uint8_t*>(&platformSet.fds_bits[0]);
-#elif HAVE_PRIVATE_FDS_BITS
-    dest = reinterpret_cast<uint8_t*>(&platformSet.__fds_bits[0]);
-#endif
-
-    memcpy(dest, palSet, bytesToCopy);
-#endif
-}
-
-extern "C" int32_t SystemNative_FdSetSize()
-{
-    return FD_SETSIZE;
-}
-
-extern "C" Error
-SystemNative_Select(int32_t fdCount, uint32_t* readFdSet, uint32_t* writeFdSet, uint32_t* errorFdSet, int32_t microseconds, int32_t* selected)
-{
-    if (selected == nullptr)
-    {
-        return PAL_EFAULT;
-    }
-
-    if (fdCount < 0 || static_cast<uint32_t>(fdCount) >= FD_SETSIZE || microseconds < -1)
-    {
-        return PAL_EINVAL;
-    }
-
-    fd_set* readFds = nullptr;
-    fd_set* writeFds = nullptr;
-    fd_set* errorFds = nullptr;
-    timeval* timeout = nullptr;
-    timeval tv;
-
-    if (readFdSet != nullptr)
-    {
-        readFds = reinterpret_cast<fd_set*>(alloca(sizeof(fd_set)));
-        ConvertFdSetPalToPlatform(*readFds, readFdSet, fdCount);
-    }
-
-    if (writeFdSet != nullptr)
-    {
-        writeFds = reinterpret_cast<fd_set*>(alloca(sizeof(fd_set)));
-        ConvertFdSetPalToPlatform(*writeFds, writeFdSet, fdCount);
-    }
-
-    if (errorFdSet != nullptr)
-    {
-        errorFds = reinterpret_cast<fd_set*>(alloca(sizeof(fd_set)));
-        ConvertFdSetPalToPlatform(*errorFds, errorFdSet, fdCount);
-    }
-
-    if (microseconds != -1)
-    {
-        tv.tv_sec = microseconds / 1000000;
-        tv.tv_usec = microseconds % 1000000;
-        timeout = &tv;
-    }
-
-    int rv;
-    while (CheckInterrupted(rv = select(fdCount, readFds, writeFds, errorFds, timeout)));
-    if (rv == -1)
-    {
-        return SystemNative_ConvertErrorPlatformToPal(errno);
-    }
-
-    if (readFdSet != nullptr)
-    {
-        ConvertFdSetPlatformToPal(readFdSet, *readFds, fdCount);
-    }
-
-    if (writeFdSet != nullptr)
-    {
-        ConvertFdSetPlatformToPal(writeFdSet, *writeFds, fdCount);
-    }
-
-    if (errorFdSet != nullptr)
-    {
-        ConvertFdSetPlatformToPal(errorFdSet, *errorFds, fdCount);
-    }
-
-    *selected = rv;
-    return PAL_SUCCESS;
-}
-
 extern "C" Error SystemNative_GetBytesAvailable(int32_t socket, int32_t* available)
 {
     if (available == nullptr)
@@ -2669,4 +2528,77 @@ extern "C" int32_t SystemNative_PlatformSupportsDualModeIPv4PacketInfo()
 #else
     return 0;
 #endif
+}
+
+static char* GetNameFromUid(uid_t uid)
+{
+    size_t bufferLength = 512;
+    while (true)
+    {
+        char *buffer = reinterpret_cast<char*>(malloc(bufferLength));
+        if (buffer == nullptr)
+            return nullptr;
+
+        struct passwd pw;
+        struct passwd* result;
+        if (getpwuid_r(uid, &pw, buffer, bufferLength, &result) == 0)
+        {
+            if (result == nullptr)
+            {
+                errno = ENOENT;
+                free(buffer);
+                return nullptr;
+            }
+            else
+            {
+                char* name = strdup(pw.pw_name);
+                free(buffer);
+                return name;
+            }
+        }
+
+        free(buffer);
+        if (errno == ERANGE)
+        {
+            bufferLength *= 2;
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+}
+
+extern "C" char* SystemNative_GetPeerUserName(intptr_t socket)
+{
+    int fd = ToFileDescriptor(socket);
+#ifdef SO_PEERCRED
+    struct ucred creds;
+    socklen_t len = sizeof(creds);
+    return getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &creds, &len) == 0 ?
+        GetNameFromUid(creds.uid) :
+        nullptr;
+#elif HAVE_GETPEEREID
+    uid_t euid, egid;
+    return getpeereid(fd, &euid, &egid) == 0 ?
+        GetNameFromUid(euid) :
+        nullptr;
+#else
+    (void)fd;
+    errno = ENOTSUP;
+    return nullptr;
+#endif
+}
+
+extern "C" void SystemNative_GetDomainSocketSizes(int32_t* pathOffset, int32_t* pathSize, int32_t* addressSize)
+{
+    assert(pathOffset != nullptr);
+    assert(pathSize != nullptr);
+    assert(addressSize != nullptr);
+
+    struct sockaddr_un domainSocket;
+
+    *pathOffset = offsetof(struct sockaddr_un, sun_path);
+    *pathSize = sizeof(domainSocket.sun_path);
+    *addressSize = sizeof(domainSocket);
 }

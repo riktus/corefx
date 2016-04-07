@@ -121,7 +121,7 @@ namespace System
                     throw;
                 }
 
-                throw new ArgumentException(nameof(extraValue));
+                throw new ArgumentException(SR.Argument_ExtraNotValid, nameof(extraValue));
             }
         }
 
@@ -156,7 +156,7 @@ namespace System
                     }
                     else
                     {
-                        throw new ArgumentException(nameof(value));
+                        throw new ArgumentException(SR.Argument_ExtraNotValid, nameof(value));
                     }
                 }
                 else
@@ -275,7 +275,7 @@ namespace System
                 {
                     value = string.Empty;
                 }
-                if (value.Length > 0)
+                if (value.Length > 0 && value[0] != '?')
                 {
                     value = '?' + value;
                 }
@@ -307,7 +307,7 @@ namespace System
                 {
                     if (!Uri.CheckSchemeName(value))
                     {
-                        throw new ArgumentException(nameof(value));
+                        throw new ArgumentException(SR.net_uri_BadScheme, nameof(value));
                     }
                     value = value.ToLowerInvariant();
                 }

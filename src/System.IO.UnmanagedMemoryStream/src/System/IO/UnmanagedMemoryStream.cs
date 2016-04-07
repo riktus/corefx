@@ -29,7 +29,7 @@ namespace System.IO
      *
      * It may become necessary to add in some sort of 
      * DeallocationMode enum, specifying whether we unmap a section of memory, 
-     * call free, run a user-provided delegate to free the memory, etc etc.  
+     * call free, run a user-provided delegate to free the memory, etc.  
      * We'll suggest user write a subclass of UnmanagedMemoryStream that uses
      * a SafeHandle subclass to hold onto the memory.
      * Check for problems when using this in the negative parts of a 
@@ -62,7 +62,7 @@ namespace System.IO
      *    a. a race condition in WriteX that could have allowed a thread to 
      *    read from unzeroed memory was fixed
      *    b. memory region cannot be expanded beyond _capacity; in other 
-     *    words, a UMS creator is saying a writeable UMS is safe to 
+     *    words, a UMS creator is saying a writable UMS is safe to 
      *    write to anywhere in the memory range up to _capacity, specified
      *    in the ctor. Even if the caller doesn't specify a capacity, then
      *    length is used as the capacity.
@@ -492,25 +492,12 @@ namespace System.IO
         }
 
         /// <summary>
-        /// Asynchronously reads the bytes from the current stream and writes them to another
-        /// stream, using a specified buffer size.
-        /// </summary>
-        /// <param name="destination">The stream to which the contents of the current stream will be copied.</param>
-        /// <param name="bufferSize">The size, in bytes, of the buffer. This value must be greater than zero.</param>
-        /// <param name="cancellationToken">The token to monitor for cancellation requests.</param>
-        /// <returns>A task that represents the asynchronous copy operation.</returns>
-        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
-        {
-            return StreamHelpers.ArrayPoolCopyToAsync(this, destination, bufferSize, cancellationToken);
-        }
-
-        /// <summary>
         /// Reads bytes from stream and puts them into the buffer
         /// </summary>
         /// <param name="buffer">Buffer to read the bytes to.</param>
         /// <param name="offset">Starting index in the buffer.</param>
         /// <param name="count">Maximum number of bytes to read.</param>       
-        /// <param name="cancellationToken">Token that can be used to cancell this operation.</param>
+        /// <param name="cancellationToken">Token that can be used to cancel this operation.</param>
         /// <returns>Task that can be used to access the number of bytes actually read.</returns>
         public override Task<Int32> ReadAsync(Byte[] buffer, Int32 offset, Int32 count, CancellationToken cancellationToken)
         {
@@ -587,7 +574,7 @@ namespace System.IO
         }
 
         /// <summary>
-        /// Advanced the Position to specifice location in the stream.
+        /// Advanced the Position to specific location in the stream.
         /// </summary>
         /// <param name="offset">Offset from the loc parameter.</param>
         /// <param name="loc">Origin for the offset parameter.</param>
@@ -755,7 +742,7 @@ namespace System.IO
         /// <param name="buffer">Buffer that will be written.</param>
         /// <param name="offset">Starting index in the buffer.</param>
         /// <param name="count">Number of bytes to write.</param>
-        /// <param name="cancellationToken">Token that can be used to cancell the operation.</param>
+        /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
         /// <returns>Task that can be awaited </returns>
         public override Task WriteAsync(Byte[] buffer, Int32 offset, Int32 count, CancellationToken cancellationToken)
         {

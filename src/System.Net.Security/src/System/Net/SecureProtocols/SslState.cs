@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Security.Authentication;
 using System.Security.Authentication.ExtendedProtection;
 using System.Security.Cryptography.X509Certificates;
@@ -38,7 +39,7 @@ namespace System.Net.Security
         private bool _handshakeCompleted;
         private bool _certValidationFailed;
         private SecurityStatusPal _securityStatus;
-        private Exception _exception;
+        private ExceptionDispatchInfo _exception;
 
         private enum CachedSessionStatus : byte
         {
@@ -100,7 +101,7 @@ namespace System.Net.Security
             //
             if (_exception != null)
             {
-                throw _exception;
+                _exception.Throw();
             }
 
             if (Context != null && Context.IsValidContext)
@@ -425,11 +426,13 @@ namespace System.Net.Security
             }
         }
 
-        private Exception SetException(Exception e)
+        private ExceptionDispatchInfo SetException(Exception e)
         {
+            Debug.Assert(e != null, $"Expected non-null Exception to be passed to {nameof(SetException)}");
+
             if (_exception == null)
             {
-                _exception = e;
+                _exception = ExceptionDispatchInfo.Capture(e);
             }
 
             if (_exception != null && Context != null)
@@ -460,7 +463,7 @@ namespace System.Net.Security
         {
             if (_exception != null)
             {
-                throw _exception;
+                _exception.Throw();
             }
 
             if (authSucessCheck && !IsAuthenticated)
@@ -479,7 +482,7 @@ namespace System.Net.Security
         //
         internal void Close()
         {
-            _exception = new ObjectDisposedException("SslStream");
+            _exception = ExceptionDispatchInfo.Capture(new ObjectDisposedException("SslStream"));
             if (Context != null)
             {
                 Context.Close();
@@ -531,7 +534,7 @@ namespace System.Net.Security
         // When re-handshaking the "old" key decrypted data are queued until the handshake is done.
         // When stream calls for decryption we will feed it queued data left from "old" encryption key.
         //
-        // Must be called under the lock in case concurent handshake is going.
+        // Must be called under the lock in case concurrent handshake is going.
         //
         internal int CheckOldKeyDecryptedData(byte[] buffer, int offset, int count)
         {
@@ -621,12 +624,12 @@ namespace System.Net.Security
         {
             lock (this)
             {
-                // Note we are already inside the read, so checking for already going concurent handshake.
+                // Note we are already inside the read, so checking for already going concurrent handshake.
                 _lockReadState = LockHandshake;
 
                 if (_pendingReHandshake)
                 {
-                    // A concurent handshake is pending, resume.
+                    // A concurrent handshake is pending, resume.
                     FinishRead(buffer);
                     return;
                 }
@@ -679,13 +682,13 @@ namespace System.Net.Security
                 _Framing = Framing.Unknown;
                 _handshakeCompleted = false;
 
-                if (SetException(e) == e)
+                if (SetException(e).SourceException == e)
                 {
                     throw;
                 }
                 else
                 {
-                    throw _exception;
+                    _exception.Throw();
                 }
             }
             finally
@@ -746,7 +749,7 @@ namespace System.Net.Security
                 _Framing = Framing.Unknown;
                 _handshakeCompleted = false;
 
-                throw SetException(e);
+                SetException(e).Throw();
             }
         }
 
@@ -804,19 +807,19 @@ namespace System.Net.Security
         {
             if (message.Failed)
             {
-                StartSendAuthResetSignal(null, asyncRequest, new AuthenticationException(SR.net_auth_SSPI, message.GetException()));
+                StartSendAuthResetSignal(null, asyncRequest, ExceptionDispatchInfo.Capture(new AuthenticationException(SR.net_auth_SSPI, message.GetException())));
                 return;
             }
             else if (message.Done && !_pendingReHandshake)
             {
                 if (!CompleteHandshake())
                 {
-                    StartSendAuthResetSignal(null, asyncRequest, new AuthenticationException(SR.net_ssl_io_cert_validation, null));
+                    StartSendAuthResetSignal(null, asyncRequest, ExceptionDispatchInfo.Capture(new AuthenticationException(SR.net_ssl_io_cert_validation, null)));
                     return;
                 }
 
                 // Release waiting IO if any. Presumably it should not throw.
-                // Otheriwse application may get not expected type of the exception.
+                // Otherwise application may get not expected type of the exception.
                 FinishHandshake(null, asyncRequest);
                 return;
             }
@@ -932,12 +935,12 @@ namespace System.Net.Security
                 int offset = 0;
                 SecurityStatusPal status = PrivateDecryptData(buffer, ref offset, ref count);
 
-                if (status == SecurityStatusPal.OK)
+                if (status.ErrorCode == SecurityStatusPalErrorCode.OK)
                 {
                     Exception e = EnqueueOldKeyDecryptedData(buffer, offset, count);
                     if (e != null)
                     {
-                        StartSendAuthResetSignal(null, asyncRequest, e);
+                        StartSendAuthResetSignal(null, asyncRequest, ExceptionDispatchInfo.Capture(e));
                         return;
                     }
 
@@ -945,11 +948,11 @@ namespace System.Net.Security
                     StartReceiveBlob(buffer, asyncRequest);
                     return;
                 }
-                else if (status != SecurityStatusPal.Renegotiate)
+                else if (status.ErrorCode != SecurityStatusPalErrorCode.Renegotiate)
                 {
                     // Fail re-handshake.
                     ProtocolToken message = new ProtocolToken(null, status);
-                    StartSendAuthResetSignal(null, asyncRequest, new AuthenticationException(SR.net_auth_SSPI, message.GetException()));
+                    StartSendAuthResetSignal(null, asyncRequest, ExceptionDispatchInfo.Capture(new AuthenticationException(SR.net_auth_SSPI, message.GetException())));
                     return;
                 }
 
@@ -967,14 +970,14 @@ namespace System.Net.Security
         //  This is to reset auth state on remote side.
         //  If this write succeeds we will allow auth retrying.
         //
-        private void StartSendAuthResetSignal(ProtocolToken message, AsyncProtocolRequest asyncRequest, Exception exception)
+        private void StartSendAuthResetSignal(ProtocolToken message, AsyncProtocolRequest asyncRequest, ExceptionDispatchInfo exception)
         {
             if (message == null || message.Size == 0)
             {
                 //
                 // We don't have an alert to send so cannot retry and fail prematurely.
                 //
-                throw exception;
+                exception.Throw();
             }
 
             if (asyncRequest == null)
@@ -992,7 +995,7 @@ namespace System.Net.Security
                 InnerStreamAPM.EndWrite(ar);
             }
 
-            throw exception;
+            exception.Throw();
         }
 
         // - Loads the channel parameters
@@ -1073,10 +1076,10 @@ namespace System.Net.Security
 
                 // Special case for an error notification.
                 object asyncState = asyncRequest.AsyncState;
-                Exception exception = asyncState as Exception;
+                ExceptionDispatchInfo exception = asyncState as ExceptionDispatchInfo;
                 if (exception != null)
                 {
-                    throw exception;
+                    exception.Throw();
                 }
 
                 sslState.CheckCompletionBeforeNextReceive((ProtocolToken)asyncState, asyncRequest);
@@ -1225,7 +1228,7 @@ namespace System.Net.Security
 
             if (lockState != LockHandshake)
             {
-                // Proceed, no concurent handshake is ongoing so no need for a lock.
+                // Proceed, no concurrent handshake is ongoing so no need for a lock.
                 return CheckOldKeyDecryptedData(buffer, offset, count);
             }
 
@@ -1510,7 +1513,7 @@ namespace System.Net.Security
              * ... PCT hello ...
              */
 
-            /* Microsft Unihello starts with
+            /* Microsoft Unihello starts with
              * RECORD_LENGTH_MSB  (ignore)
              * RECORD_LENGTH_LSB  (ignore)
              * SSL2_CLIENT_HELLO  (must be equal)
@@ -1842,7 +1845,7 @@ namespace System.Net.Security
                 //
                 // 3. SetException won't overwrite an already-set _Exception.
                 //
-                // 4. There are three possibilites for _LockReadState and _LockWriteState:
+                // 4. There are three possibilities for _LockReadState and _LockWriteState:
                 //
                 //    a. They were set back to None by the first call to FinishHandshake, and this will set them to
                 //       None again: a no-op.

@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Composition.Runtime.Util;
@@ -74,7 +73,7 @@ namespace System.Composition.Hosting.Core
         /// Determines equality between two contracts.
         /// </summary>
         /// <param name="obj">The contract to test.</param>
-        /// <returns>True if the the contracts are equivalent; otherwise, false.</returns>
+        /// <returns>True if the contracts are equivalent; otherwise, false.</returns>
         public override bool Equals(object obj)
         {
             var contract = obj as CompositionContract;
@@ -99,9 +98,9 @@ namespace System.Composition.Hosting.Core
         }
 
         /// <summary>
-        /// Creates a string representaiton of the contract.
+        /// Creates a string representation of the contract.
         /// </summary>
-        /// <returns>A string representaiton of the contract.</returns>
+        /// <returns>A string representation of the contract.</returns>
         public override string ToString()
         {
             var result = Formatters.Format(_contractType);

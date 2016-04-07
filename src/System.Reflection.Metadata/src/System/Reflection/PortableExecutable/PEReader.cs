@@ -506,7 +506,7 @@ namespace System.Reflection.PortableExecutable
         }
 
         /// <summary>
-        /// Reads the data pointed to by the specifed Debug Directory entry and interprets them as CodeView.
+        /// Reads the data pointed to by the specified Debug Directory entry and interprets them as CodeView.
         /// </summary>
         /// <exception cref="ArgumentException"><paramref name="entry"/> is not a CodeView entry.</exception>
         /// <exception cref="BadImageFormatException">Bad format of the data.</exception>
@@ -514,7 +514,7 @@ namespace System.Reflection.PortableExecutable
         {
             if (entry.Type != DebugDirectoryEntryType.CodeView)
             {
-                throw new ArgumentException(nameof(entry));
+                throw new ArgumentException(SR.NotCodeViewEntry, nameof(entry));
             }
 
             using (AbstractMemoryBlock block = _peImage.GetMemoryBlock(entry.DataPointer, entry.DataSize))

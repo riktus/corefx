@@ -17,6 +17,7 @@ enum
 enum PAL_CURLoption : int32_t
 {
     PAL_CURLOPT_INFILESIZE = CurlOptionLongBase + 14,
+    PAL_CURLOPT_SSLVERSION = CurlOptionLongBase + 32,
     PAL_CURLOPT_VERBOSE = CurlOptionLongBase + 41,
     PAL_CURLOPT_NOBODY = CurlOptionLongBase + 44,
     PAL_CURLOPT_UPLOAD = CurlOptionLongBase + 46,
@@ -24,7 +25,9 @@ enum PAL_CURLoption : int32_t
     PAL_CURLOPT_FOLLOWLOCATION = CurlOptionLongBase + 52,
     PAL_CURLOPT_PROXYPORT = CurlOptionLongBase + 59,
     PAL_CURLOPT_POSTFIELDSIZE = CurlOptionLongBase + 60,
+    PAL_CURLOPT_SSL_VERIFYPEER = CurlOptionLongBase + 64,
     PAL_CURLOPT_MAXREDIRS = CurlOptionLongBase + 68,
+    PAL_CURLOPT_SSL_VERIFYHOST = CurlOptionLongBase + 81,
     PAL_CURLOPT_HTTP_VERSION = CurlOptionLongBase + 84,
     PAL_CURLOPT_NOSIGNAL = CurlOptionLongBase + 99,
     PAL_CURLOPT_PROXYTYPE = CurlOptionLongBase + 101,
@@ -78,6 +81,11 @@ enum PAL_CURL_HTTP_VERSION
     PAL_CURL_HTTP_VERSION_2_0 = 3
 };
 
+enum PAL_CURL_SSLVERSION
+{
+    PAL_CURL_SSLVERSION_TLSv1 = 1
+};
+
 enum PAL_CURLINFO : int32_t
 {
     PAL_CURLINFO_PRIVATE = CurlInfoStringBase + 21,
@@ -125,6 +133,8 @@ enum PAL_CurlInfoType : int32_t
 const uint64_t PAL_CURL_READFUNC_ABORT = 0x10000000;
 const uint64_t PAL_CURL_READFUNC_PAUSE = 0x10000001;
 const uint64_t PAL_CURL_WRITEFUNC_PAUSE = 0x10000001;
+
+const uint64_t PAL_CURL_MAX_HTTP_HEADER = 100 * 1024;
 
 /*
 Creates a new CURL instance.

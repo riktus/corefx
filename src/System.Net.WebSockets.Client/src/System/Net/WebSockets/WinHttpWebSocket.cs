@@ -32,10 +32,6 @@ namespace System.Net.WebSockets
 
         private WinHttpWebSocketState _operation = new WinHttpWebSocketState();
 
-        // TODO (Issue 2505): temporary pinned buffer caches of 1 item. Will be replaced by PinnableBufferCache.
-        private GCHandle _cachedSendPinnedBuffer;
-        private GCHandle _cachedReceivePinnedBuffer;
-
         public WinHttpWebSocket()
         {
         }
@@ -141,10 +137,15 @@ namespace System.Net.WebSockets
                         WinHttpException.ThrowExceptionUsingLastError();
                     }
 
+                    const uint notificationFlags =
+                        Interop.WinHttp.WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS |
+                        Interop.WinHttp.WINHTTP_CALLBACK_FLAG_HANDLES |
+                        Interop.WinHttp.WINHTTP_CALLBACK_FLAG_SECURE_FAILURE;
+
                     if (Interop.WinHttp.WinHttpSetStatusCallback(
                         _operation.RequestHandle,
                         WinHttpWebSocketCallback.s_StaticCallbackDelegate,
-                        Interop.WinHttp.WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS,
+                        notificationFlags,
                         IntPtr.Zero) == (IntPtr)Interop.WinHttp.WINHTTP_INVALID_STATUS_CALLBACK)
                     {
                         WinHttpException.ThrowExceptionUsingLastError();
@@ -299,16 +300,7 @@ namespace System.Net.WebSockets
             {
                 var bufferType = WebSocketMessageTypeAdapter.GetWinHttpMessageType(messageType, endOfMessage);
 
-                // TODO (Issue 2505): replace with PinnableBufferCache.
-                if (!_cachedSendPinnedBuffer.IsAllocated || _cachedSendPinnedBuffer.Target != buffer.Array)
-                {
-                    if (_cachedSendPinnedBuffer.IsAllocated)
-                    {
-                        _cachedSendPinnedBuffer.Free();
-                    }
-
-                    _cachedSendPinnedBuffer = GCHandle.Alloc(buffer.Array, GCHandleType.Pinned);
-                }
+                _operation.PinSendBuffer(buffer);
 
                 bool sendOperationAlreadyPending = false;
                 if (_operation.PendingWriteOperation == false)
@@ -367,16 +359,7 @@ namespace System.Net.WebSockets
 
             using (CancellationTokenRegistration ctr = ThrowOrRegisterCancellation(cancellationToken))
             {
-                // TODO (Issue 2505): replace with PinnableBufferCache.
-                if (!_cachedReceivePinnedBuffer.IsAllocated || _cachedReceivePinnedBuffer.Target != buffer.Array)
-                {
-                    if (_cachedReceivePinnedBuffer.IsAllocated)
-                    {
-                        _cachedReceivePinnedBuffer.Free();
-                    }
-
-                    _cachedReceivePinnedBuffer = GCHandle.Alloc(buffer.Array, GCHandleType.Pinned);
-                }
+                _operation.PinReceiveBuffer(buffer);
 
                 await InternalReceiveAsync(buffer).ConfigureAwait(false);
 
@@ -751,18 +734,6 @@ namespace System.Net.WebSockets
                     if (!_disposed)
                     {
                         _operation.Dispose();
-
-                        // TODO (Issue 2508): Pinned buffers must be released in the callback, when it is guaranteed no further
-                        // operations will be made to the send/receive buffers.
-                        if (_cachedReceivePinnedBuffer.IsAllocated)
-                        {
-                            _cachedReceivePinnedBuffer.Free();
-                        }
-
-                        if (_cachedSendPinnedBuffer.IsAllocated)
-                        {
-                            _cachedSendPinnedBuffer.Free();
-                        }
 
                         _disposed = true;
                     }

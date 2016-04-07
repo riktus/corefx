@@ -35,14 +35,18 @@ namespace System.Data.SqlClient.ManualTesting.Tests
         [Fact]
         public static void InvalidConnStringTest()
         {
+#if MANAGED_SNI
             const string invalidConnStringError = "A network-related or instance-specific error occurred while establishing a connection to SQL Server. The server was not found or was not accessible. Verify that the instance name is correct and that SQL Server is configured to allow remote connections. (provider: Named Pipes Provider, error: 25 - Connection string is not valid)";
+#else
+            const string invalidConnStringError = "A network-related or instance-specific error occurred while establishing a connection to SQL Server. The server was not found or was not accessible. Verify that the instance name is correct and that SQL Server is configured to allow remote connections.";
+#endif
 
             SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(DataTestClass.SQL2008_Northwind_NamedPipes);
             builder.ConnectTimeout = 2;
 
             string host = GetHostFromDataSource(builder.DataSource);
 
-            // Using forwad slashes
+            // Using forward slashes
             builder.DataSource = "np://" + host + "/pipe/sql/query";
             OpenBadConnection<SqlException>(builder.ConnectionString, invalidConnStringError);
 

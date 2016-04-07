@@ -2,15 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
 namespace System.Composition
 {
     /// <summary>
-    /// Marks a part as being constrainted to sharing within the named boundary.
+    /// Marks a part as being constrained to sharing within the named boundary.
     /// </summary>
     /// <example>
     /// [Export,

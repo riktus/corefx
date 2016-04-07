@@ -2,13 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using Xunit;
 
@@ -17,7 +12,7 @@ namespace System.Globalization.Tests
     public class CultureInfoAll
     {
         [Fact]
-        [ActiveIssue(5463, PlatformID.AnyUnix)]
+        [PlatformSpecific(PlatformID.Windows)] // P/Invoke to Win32 function
         public void TestAllCultures()
         {
             Assert.True(EnumSystemLocalesEx(EnumLocales, LOCALE_WINDOWS, IntPtr.Zero, IntPtr.Zero), "EnumSystemLocalesEx has failed");

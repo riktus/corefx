@@ -15,13 +15,12 @@ namespace System.Net.Http
     {
         private volatile bool _disposed;
         private readonly WinHttpRequestState _state;
+        private SafeWinHttpHandle _requestHandle;
         
-        // TODO (Issue 2505): temporary pinned buffer caches of 1 item. Will be replaced by PinnableBufferCache.
-        private GCHandle _cachedReceivePinnedBuffer = default(GCHandle);
-
-        internal WinHttpResponseStream(WinHttpRequestState state)
+        internal WinHttpResponseStream(SafeWinHttpHandle requestHandle, WinHttpRequestState state)
         {
             _state = state;
+            _requestHandle = requestHandle;
         }
 
         public override bool CanRead
@@ -103,7 +102,7 @@ namespace System.Net.Http
 
             if (count > buffer.Length - offset)
             {
-                throw new ArgumentException(nameof(buffer));
+                throw new ArgumentException(SR.net_http_buffer_insufficient_length, nameof(buffer));
             }
 
             if (token.IsCancellationRequested)
@@ -118,16 +117,7 @@ namespace System.Net.Http
                 throw new InvalidOperationException(SR.net_http_no_concurrent_io_allowed);
             }
 
-            // TODO (Issue 2505): replace with PinnableBufferCache.
-            if (!_cachedReceivePinnedBuffer.IsAllocated || _cachedReceivePinnedBuffer.Target != buffer)
-            {
-                if (_cachedReceivePinnedBuffer.IsAllocated)
-                {
-                    _cachedReceivePinnedBuffer.Free();
-                }
-
-                _cachedReceivePinnedBuffer = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-            }
+            _state.PinReceiveBuffer(buffer);
 
             _state.TcsReadFromResponseStream =
                 new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -160,7 +150,7 @@ namespace System.Net.Http
                         lock (_state.Lock)
                         {
                             if (!Interop.WinHttp.WinHttpReadData(
-                                _state.RequestHandle,
+                                _requestHandle,
                                 Marshal.UnsafeAddrOfPinnedArrayElement(buffer, offset),
                                 (uint)bytesToRead,
                                 IntPtr.Zero))
@@ -177,7 +167,7 @@ namespace System.Net.Http
                 
             lock (_state.Lock)
             {
-                if (!Interop.WinHttp.WinHttpQueryDataAvailable(_state.RequestHandle, IntPtr.Zero))
+                if (!Interop.WinHttp.WinHttpQueryDataAvailable(_requestHandle, IntPtr.Zero))
                 {
                     _state.TcsReadFromResponseStream.TrySetException(
                         new IOException(SR.net_http_io_read, WinHttpException.CreateExceptionUsingLastError()));
@@ -216,20 +206,12 @@ namespace System.Net.Http
             {
                 _disposed = true;
 
-                // TODO (Issue 2508): Pinned buffers must be released in the callback, when it is guaranteed no further
-                // operations will be made to the send/receive buffers.
-                if (_cachedReceivePinnedBuffer.IsAllocated)
-                {
-                    _cachedReceivePinnedBuffer.Free();
-                    _cachedReceivePinnedBuffer = default(GCHandle);
-                }
-
                 if (disposing)
                 {
-                    if (_state.RequestHandle != null)
+                    if (_requestHandle != null)
                     {
-                        _state.RequestHandle.Dispose();
-                        _state.RequestHandle = null;
+                        _requestHandle.Dispose();
+                        _requestHandle = null;
                     }
                 }
             }

@@ -60,7 +60,7 @@ namespace System.IO
             //}
 
             // Normal is a special case and happens to have different values in WinRT and Win32.
-            // It's meant to indicate the absense of other flags.  On WinRT this logically is 0,
+            // It's meant to indicate the absence of other flags.  On WinRT this logically is 0,
             // however on Win32 it is represented with a discrete value of 128.
             return (fileAttributes == WinRTFileAttributes.Normal) ?
                 FileAttributes.Normal :
@@ -162,7 +162,7 @@ namespace System.IO
         {
             try
             {
-                // Note the absense of TranslateWinRTTask, we translate below in the catch block.
+                // Note the absence of TranslateWinRTTask, we translate below in the catch block.
                 StorageFile file = await StorageFile.GetFileFromPathAsync(fullPath).AsTask().ConfigureAwait(false);
                 await file.DeleteAsync(StorageDeleteOption.PermanentDelete).AsTask().ConfigureAwait(false);
             }
@@ -563,7 +563,7 @@ namespace System.IO
                 throw Win32Marshal.GetExceptionForWin32Error(Interop.mincore.Errors.ERROR_DIR_NOT_EMPTY, fullPath);
 
             // StorageFolder.Delete ignores readonly attribute.  Detect and throw.
-            if ((folder.Attributes & Windows.Storage.FileAttributes.ReadOnly) == Windows.Storage.FileAttributes.ReadOnly)
+            if ((folder.Attributes & WinRTFileAttributes.ReadOnly) == WinRTFileAttributes.ReadOnly)
                 throw new IOException(SR.Format(SR.UnauthorizedAccess_IODenied_Path, fullPath));
 
             StorageFolder parentFolder = await folder.GetParentAsync().TranslateWinRTTask(fullPath, isDirectory: true);

@@ -237,7 +237,7 @@ namespace System.Net.Http
                 if (buffer == null) throw new ArgumentNullException(nameof(buffer));
                 if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
                 if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-                if (offset > buffer.Length - count) throw new ArgumentException(nameof(buffer));
+                if (offset > buffer.Length - count) throw new ArgumentException(SR.net_http_buffer_insufficient_length, nameof(buffer));
                 CheckDisposed();
 
                 EventSourceTrace("Buffer: {0}, Offset: {1}, Count: {2}", buffer.Length, offset, count);
@@ -303,7 +303,7 @@ namespace System.Net.Http
                     if (cancellationToken.CanBeCanceled)
                     {
                         // If the cancellation token is cancelable, then we need to register for cancellation.
-                        // We creat a special CancelableReadState that carries with it additional info:
+                        // We create a special CancelableReadState that carries with it additional info:
                         // the cancellation token and the registration with that token.  When cancellation
                         // is requested, we schedule a work item that tries to remove the read state
                         // from being pending, canceling it in the process.  This needs to happen under the

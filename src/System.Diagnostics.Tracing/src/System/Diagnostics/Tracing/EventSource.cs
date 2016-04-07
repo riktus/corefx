@@ -195,8 +195,6 @@ using Microsoft.Win32;
 
 #if ES_BUILD_STANDALONE
 using EventDescriptor = Microsoft.Diagnostics.Tracing.EventDescriptor;
-#else
-using System.Threading.Tasks;
 #endif
 
 using Microsoft.Reflection;
@@ -5973,7 +5971,7 @@ namespace System.Diagnostics.Tracing
         internal bool m_activityFilteringEnabled;     // does THIS EventSource have activity filtering turned on for this listener?
 #endif // FEATURE_ACTIVITYSAMPLING
 
-        // Only guarenteed to exist after a InsureInit()
+        // Only guaranteed to exist after a InsureInit()
         internal EventDispatcher m_Next;              // These form a linked list in code:EventSource.m_Dispatchers
         // Of all listeners for that eventSource.  
     }
