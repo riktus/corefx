@@ -33,13 +33,7 @@ namespace System.Collections.Generic
         private IEqualityComparer<TKey> comparer;
         private KeyCollection keys;
         private ValueCollection values;
-        private Object _syncRoot;
-
-        // constants for serialization
-        private const String VersionName = "Version";
-        private const String HashSizeName = "HashSize";  // Must save buckets.Length
-        private const String KeyValuePairsName = "KeyValuePairs";
-        private const String ComparerName = "Comparer";
+        private object _syncRoot;
 
         public Dictionary() : this(0, null) { }
 
@@ -370,7 +364,6 @@ namespace System.Collections.Generic
                 Resize(entries.Length, true);
             }
 #endif
-
         }
 
         private void Resize()
@@ -574,7 +567,7 @@ namespace System.Collections.Generic
             {
                 if (_syncRoot == null)
                 {
-                    System.Threading.Interlocked.CompareExchange<Object>(ref _syncRoot, new Object(), null);
+                    System.Threading.Interlocked.CompareExchange<object>(ref _syncRoot, new object(), null);
                 }
                 return _syncRoot;
             }
@@ -977,7 +970,7 @@ namespace System.Collections.Generic
                 get { return false; }
             }
 
-            Object ICollection.SyncRoot
+            object ICollection.SyncRoot
             {
                 get { return ((ICollection)dictionary).SyncRoot; }
             }
@@ -1032,7 +1025,7 @@ namespace System.Collections.Generic
                     }
                 }
 
-                Object System.Collections.IEnumerator.Current
+                object System.Collections.IEnumerator.Current
                 {
                     get
                     {
@@ -1204,7 +1197,7 @@ namespace System.Collections.Generic
                 get { return false; }
             }
 
-            Object ICollection.SyncRoot
+            object ICollection.SyncRoot
             {
                 get { return ((ICollection)dictionary).SyncRoot; }
             }
@@ -1258,7 +1251,7 @@ namespace System.Collections.Generic
                     }
                 }
 
-                Object System.Collections.IEnumerator.Current
+                object System.Collections.IEnumerator.Current
                 {
                     get
                     {

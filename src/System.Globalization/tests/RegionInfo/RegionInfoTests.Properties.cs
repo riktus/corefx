@@ -12,9 +12,20 @@ namespace System.Globalization.Tests
         [Fact]
         public void CurrentRegion()
         {
-            RegionInfo ri = new RegionInfo(new RegionInfo(CultureInfo.CurrentCulture.Name).TwoLetterISORegionName);
-            Assert.True(RegionInfo.CurrentRegion.Equals(ri) || RegionInfo.CurrentRegion.Equals(new RegionInfo(CultureInfo.CurrentCulture.Name)));
-            Assert.Same(RegionInfo.CurrentRegion, RegionInfo.CurrentRegion);
+            CultureInfo oldThreadCulture = CultureInfo.CurrentCulture;
+
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo("en-US");
+
+                RegionInfo ri = new RegionInfo(new RegionInfo(CultureInfo.CurrentCulture.Name).TwoLetterISORegionName);
+                Assert.True(RegionInfo.CurrentRegion.Equals(ri) || RegionInfo.CurrentRegion.Equals(new RegionInfo(CultureInfo.CurrentCulture.Name)));
+                Assert.Same(RegionInfo.CurrentRegion, RegionInfo.CurrentRegion);
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = oldThreadCulture;
+            }
         }
 
         [Theory]
@@ -22,6 +33,15 @@ namespace System.Globalization.Tests
         public void DisplayName(string name, string expected)
         {
             Assert.Equal(expected, new RegionInfo(name).DisplayName);
+        }
+
+        [Theory]
+        [InlineData("GB", "United Kingdom")]
+        [InlineData("SE", "Sverige")]
+        [InlineData("FR", "France")]
+        public void NativeName(string name, string expected)
+        {
+            Assert.Equal(expected, new RegionInfo(name).NativeName);
         }
 
         [Theory]

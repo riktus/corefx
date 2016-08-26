@@ -8,10 +8,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\System.Net.Primitives.csproj" >
-      <OSGroup>Linux</OSGroup>
+      <OSGroup>Unix</OSGroup>
     </ProjectReference>
 
-    <ProjectReference Include="$(NativePackagePath)\runtime.native.System\runtime.native.System.pkgproj" />
   </ItemGroup>
 
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" />

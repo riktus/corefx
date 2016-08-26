@@ -1,3 +1,7 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -36,7 +40,7 @@ namespace System.Net.Security.Tests
         public static void GetDefaultKerberosCredentials(string username, string password)
         {
             // Fetch a Kerberos TGT which gets saved in the default cache
-            SafeGssCredHandle.Create(username, password, string.Empty).Dispose();
+            SafeGssCredHandle.Create(username, password, isNtlmOnly:false).Dispose();
         }
 
         private static void ServerLoop(object state)

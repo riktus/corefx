@@ -1,52 +1,67 @@
 Building CoreFX on FreeBSD, Linux and OS X
 ==========================================
+###Building
+Calling the script `build.sh` builds both the native and managed code.
+Only use it when the parameters that you are passing to the script apply for both components. Otherwise, use the scripts `build-native.sh` and `build-managed.sh` respectively.
 
-Building CoreFX is pretty straightforward. Clone the repo and run the build script.
+For more information about the different options when building, run `build.sh -?` and look at examples in the [developer-guide](../project-docs/developer-guide.md).
 
-```bash
-git clone https://github.com/dotnet/corefx.git
-cd corefx
-./build.sh
+### Prerequisites (native build)
+
+For Ubuntu 14.04, the following packages should be installed to build the native
+components
+
+* git
+* clang-3.5
+* cmake
+* make
+* libc6-dev
+* libssl-dev
+* libkrb5-dev
+* libcurl4-openssl-dev
+* zlib1g-dev
+
+`sudo apt-get install git clang-3.5 cmake make libc6-dev libssl-dev libkrb5-dev
+libcurl4-openssl-dev zlib1g-dev`
+
+On OS X, all the needed libraries are provided by XCode, with the exception of
+openssl. To install openssl, we recommend that you use
+[Homebrew](http://brew.sh) and do the following:
+
+```
+brew install openssl
+brew link --force openssl
 ```
 
-### `build.sh` Usage
- `./build.sh [managed] [native] [BuildArch] [BuildType] [clean] [verbose] [clangx.y] [platform]`
-
-**Example:**
-
-`./build.sh native x64 verbose clang3.9`
-
-**Options:**
+Once installed, the native components can be built by running:
 
 ```bash
-    managed            # optional argument to build the managed code
-    native             # optional argument to build the native code
-
-    # The following arguments affect native builds only:
-
-    BuildArch          # build architecture (x64, x86, arm, arm64)
-    BuildType          # build configuration type (Debug, Release)
-    clean              # optional argument to force a clean build
-    verbose            # optional argument to enable verbose build output
-    clangx.y           # optional argument to build using clang version x.y
+./build-native.sh
 ```
 
-### Prerequisites
+from the root of the repository.
 
-* bash
-* curl (devel)
-* icu
-* clang
-* llvm
-* lldb
+### Prerequisites (managed build)
 
-> Note: These instructions have been validated on:
-* Ubuntu 15.04, 14.04, and 12.04
-* Fedora 22
-* OS X 10.10 (Yosemite)
-* FreeBSD 10.2
-* NetBSD 7.0
-* Alpine Linux 3.3
+For Ubuntu 14.04, install the following packages:
+
+* libunwind8
+* libicu52
+* curl
+
+`sudo apt-get install libunwind8 libicu52 curl`
+
+In addition to the above packages, the runtime versions of the packages listed
+in the native section should also be installed (this happens automatically on
+most systems when you install the development packages).
+
+On OS X, we also require that openssl has been installed via [Homebrew](http://brew.sh).
+
+Once installed, the managed components can be built by running:
+
+```bash
+./build-managed.sh
+```
 
 ### Known Issues
 If you see errors along the lines of `SendFailure (Error writing headers)` you may need to import trusted root certificates:
@@ -54,3 +69,13 @@ If you see errors along the lines of `SendFailure (Error writing headers)` you m
 ```sh
 mozroots --import --sync
 ```
+
+## Steps to build on Ubuntu 14.04 LTS
+
+
+1. Install the prerequisites
+ * `sudo apt-get install git clang-3.5 cmake make libc6-dev libssl-dev
+   libkrb5-dev libcurl4-openssl-dev zlib1g-dev libunwind8 libicu52 curl`
+2. Clone the corefx repo `git clone https://github.com/dotnet/corefx.git`
+3. Navigate to the `corefx` directory
+4. Run the build script `./build.sh`

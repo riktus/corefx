@@ -49,17 +49,17 @@ namespace System.Linq.Expressions.Interpreter
         }
     }
 
-    internal sealed class NewInstruction : Instruction
+    internal class NewInstruction : Instruction
     {
-        private readonly ConstructorInfo _constructor;
-        private readonly int _argCount;
+        protected readonly ConstructorInfo _constructor;
+        protected readonly int _argumentCount;
 
-        public NewInstruction(ConstructorInfo constructor)
+        public NewInstruction(ConstructorInfo constructor, int argumentCount)
         {
             _constructor = constructor;
-            _argCount = constructor.GetParameters().Length;
+            _argumentCount = argumentCount;
         }
-        public override int ConsumedStack { get { return _argCount; } }
+        public override int ConsumedStack { get { return _argumentCount; } }
         public override int ProducedStack { get { return 1; } }
         public override string InstructionName
         {
@@ -67,11 +67,9 @@ namespace System.Linq.Expressions.Interpreter
         }
         public override int Run(InterpretedFrame frame)
         {
-            object[] args = new object[_argCount];
-            for (int i = _argCount - 1; i >= 0; i--)
-            {
-                args[i] = frame.Pop();
-            }
+            int first = frame.StackIndex - _argumentCount;
+
+            var args = GetArgs(frame, first);
 
             object ret;
             try
@@ -83,8 +81,30 @@ namespace System.Linq.Expressions.Interpreter
                 ExceptionHelpers.UpdateForRethrow(e.InnerException);
                 throw e.InnerException;
             }
-            frame.Push(ret);
+
+            frame.Data[first] = ret;
+            frame.StackIndex = first + 1;
+
             return +1;
+        }
+
+        protected object[] GetArgs(InterpretedFrame frame, int first)
+        {
+            if (_argumentCount > 0)
+            {
+                var args = new object[_argumentCount];
+
+                for (int i = 0; i < args.Length; i++)
+                {
+                    args[i] = frame.Data[first + i];
+                }
+
+                return args;
+            }
+            else
+            {
+                return Array.Empty<object>();
+            }
         }
 
         public override string ToString()
@@ -93,32 +113,25 @@ namespace System.Linq.Expressions.Interpreter
         }
     }
 
-    internal partial class ByRefNewInstruction : Instruction
+    internal partial class ByRefNewInstruction : NewInstruction
     {
         private readonly ByRefUpdater[] _byrefArgs;
-        private readonly ConstructorInfo _constructor;
-        private readonly int _argCount;
 
-        internal ByRefNewInstruction(ConstructorInfo target, ByRefUpdater[] byrefArgs)
+        internal ByRefNewInstruction(ConstructorInfo target, int argumentCount, ByRefUpdater[] byrefArgs)
+            : base(target, argumentCount)
         {
-            _constructor = target;
-            _argCount = target.GetParameters().Length;
             _byrefArgs = byrefArgs;
         }
 
-        public override int ConsumedStack { get { return _argCount; } }
-        public override int ProducedStack { get { return 1; } }
         public override string InstructionName
         {
             get { return "ByRefNew"; }
         }
         public sealed override int Run(InterpretedFrame frame)
         {
-            object[] args = new object[_argCount];
-            for (int i = _argCount - 1; i >= 0; i--)
-            {
-                args[i] = frame.Pop();
-            }
+            int first = frame.StackIndex - _argumentCount;
+
+            var args = GetArgs(frame, first);
 
             try
             {
@@ -132,7 +145,8 @@ namespace System.Linq.Expressions.Interpreter
                     throw ExceptionHelpers.UpdateForRethrow(e.InnerException);
                 }
 
-                frame.Push(ret);
+                frame.Data[first] = ret;
+                frame.StackIndex = first + 1;
             }
             finally
             {
@@ -421,11 +435,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("Negate", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "Negate()";
-        }
     }
 
     internal abstract class NegateCheckedInstruction : Instruction
@@ -539,11 +548,6 @@ namespace System.Linq.Expressions.Interpreter
                 default:
                     throw Error.ExpressionNotSupportedForType("NegateChecked", type);
             }
-        }
-
-        public override string ToString()
-        {
-            return "NegateChecked()";
         }
     }
 
@@ -715,11 +719,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("OnesComplement", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "OnesComplement()";
-        }
     }
 
     internal abstract class IncrementInstruction : Instruction
@@ -890,11 +889,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("Increment", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "Increment()";
-        }
     }
 
     internal abstract class DecrementInstruction : Instruction
@@ -1064,11 +1058,6 @@ namespace System.Linq.Expressions.Interpreter
                 default:
                     throw Error.ExpressionNotSupportedForType("Decrement", type);
             }
-        }
-
-        public override string ToString()
-        {
-            return "Decrement()";
         }
     }
 
@@ -1251,11 +1240,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("LeftShift", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "LeftShift()";
-        }
     }
 
     internal abstract class RightShiftInstruction : Instruction
@@ -1435,11 +1419,6 @@ namespace System.Linq.Expressions.Interpreter
                 default:
                     throw Error.ExpressionNotSupportedForType("RightShift", type);
             }
-        }
-
-        public override string ToString()
-        {
-            return "RightShift()";
         }
     }
 
@@ -1626,11 +1605,6 @@ namespace System.Linq.Expressions.Interpreter
         private static TypeCode GetTypeCode(Type type)
         {
             return System.Dynamic.Utils.TypeExtensions.GetTypeCode(type.GetTypeInfo().IsEnum ? Enum.GetUnderlyingType(type) : TypeUtils.GetNonNullableType(type));
-        }
-
-        public override string ToString()
-        {
-            return "ExclusiveOr()";
         }
     }
 
@@ -1825,11 +1799,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("Or", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "Or()";
-        }
     }
 
     internal abstract class AndInstruction : Instruction
@@ -2023,11 +1992,6 @@ namespace System.Linq.Expressions.Interpreter
                     throw Error.ExpressionNotSupportedForType("And", type);
             }
         }
-
-        public override string ToString()
-        {
-            return "And()";
-        }
     }
 
     internal abstract class NullableMethodCallInstruction : Instruction
@@ -2185,7 +2149,7 @@ namespace System.Linq.Expressions.Interpreter
                 case "ToString": return s_toString ?? (s_toString = new ToStringClass());
                 default:
                     // System.Nullable doesn't have other instance methods 
-                    throw Assert.Unreachable;
+                    throw ContractUtils.Unreachable;
             }
         }
 
@@ -2479,7 +2443,7 @@ namespace System.Linq.Expressions.Interpreter
             // A stack of variables that are defined in nested scopes. We search
             // this first when resolving a variable in case a nested scope shadows
             // one of our variable instances.
-            private readonly Stack<Set<ParameterExpression>> _shadowedVars = new Stack<Set<ParameterExpression>>();
+            private readonly Stack<HashSet<ParameterExpression>> _shadowedVars = new Stack<HashSet<ParameterExpression>>();
 
             internal ExpressionQuoter(Dictionary<ParameterExpression, LocalVariable> hoistedVariables, InterpretedFrame frame)
             {
@@ -2489,7 +2453,7 @@ namespace System.Linq.Expressions.Interpreter
 
             protected internal override Expression VisitLambda<T>(Expression<T> node)
             {
-                _shadowedVars.Push(new Set<ParameterExpression>(node.Parameters));
+                _shadowedVars.Push(new HashSet<ParameterExpression>(node.Parameters));
                 Expression b = Visit(node.Body);
                 _shadowedVars.Pop();
                 if (b == node.Body)
@@ -2503,7 +2467,7 @@ namespace System.Linq.Expressions.Interpreter
             {
                 if (node.Variables.Count > 0)
                 {
-                    _shadowedVars.Push(new Set<ParameterExpression>(node.Variables));
+                    _shadowedVars.Push(new HashSet<ParameterExpression>(node.Variables));
                 }
                 var b = Visit(node.Expressions);
                 if (node.Variables.Count > 0)
@@ -2521,7 +2485,7 @@ namespace System.Linq.Expressions.Interpreter
             {
                 if (node.Variable != null)
                 {
-                    _shadowedVars.Push(new Set<ParameterExpression>(new[] { node.Variable }));
+                    _shadowedVars.Push(new HashSet<ParameterExpression>{ node.Variable });
                 }
                 Expression b = Visit(node.Body);
                 Expression f = Visit(node.Filter);

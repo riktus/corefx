@@ -7,21 +7,21 @@ using System.Text;
 namespace System
 {
 #if INTERNAL_GLOBALIZATION_EXTENSIONS
-    internal 
+    internal
 #else
     public 
 #endif
     static partial class StringNormalizationExtensions
     {
-        public static bool IsNormalized(this string value)
+        public static bool IsNormalized(this string strInput)
         {
-            return IsNormalized(value, NormalizationForm.FormC);
+            return IsNormalized(strInput, NormalizationForm.FormC);
         }
 
-        public static string Normalize(this string value)
+        public static string Normalize(this string strInput)
         {
             // Default to Form C
-            return Normalize(value, NormalizationForm.FormC);
+            return Normalize(strInput, NormalizationForm.FormC);
         }
     }
 }

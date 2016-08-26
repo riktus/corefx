@@ -1,30 +1,35 @@
 {
   "dependencies": {
-    "Microsoft.NETCore.Platforms": "1.0.1-rc3-23931-00",
-    "Microsoft.NETCore.TestHost": "1.0.0-rc3-23931-00",
-    "Microsoft.NETCore.Console": "1.0.0-rc3-23931-00",
-    "System.IO.Compression": "4.1.0-rc3-23931-00",
+    "Microsoft.NETCore.Platforms": "1.0.2-beta-24422-01",
+    "Microsoft.NETCore.Targets": "1.0.3-beta-24422-01",
+    "Microsoft.NETCore.TestHost": "1.1.0-beta-24419-04",
+    "Microsoft.NETCore.Runtime.CoreCLR": "1.1.0-beta-24419-04",
+    "System.Diagnostics.Contracts": "4.0.2-beta-24422-01",
+    "System.IO.Compression": "4.1.2-beta-24422-01",
+    "System.Runtime.InteropServices.RuntimeInformation": "4.0.1-beta-24422-01",
+    "System.Linq.Parallel": "4.0.2-beta-24422-01",
     "coveralls.io": "1.4",
     "OpenCover": "4.6.519",
     "ReportGenerator": "2.4.3",
-    "Microsoft.DotNet.xunit.performance.analysis": "1.0.0-alpha-build0029",
-    "Microsoft.DotNet.xunit.performance.runner.Windows": "1.0.0-alpha-build0029",
-    "xunit": "2.1.0",
-    "xunit.console.netcore": "1.0.2-prerelease-00120",
-    "xunit.runner.utility": "2.1.0"
+    "Microsoft.DotNet.xunit.performance.analysis": "1.0.0-alpha-build0040",
+    "Microsoft.DotNet.xunit.performance.analysis.cli": "1.0.0-alpha-build0040",
+    "Microsoft.DotNet.xunit.performance.runner.cli": "1.0.0-alpha-build0040",
+    "Microsoft.DotNet.xunit.performance.runner.Windows": "1.0.0-alpha-build0040",
+    "Microsoft.DotNet.BuildTools.TestSuite": "1.0.0-prerelease-00704-03",
+    "xunit.console.netcore": "1.0.3-prerelease-00607-01"
   },
   "frameworks": {
-    "dnxcore50": {
-      "imports": "portable-net45+win8"
+    "netstandard1.3": {},
+    "uap10.0": {
+      "dependencies": {
+        "Microsoft.NETCore.UniversalWindowsPlatform": "5.2.1-beta-000547-00",
+        "System.Console": "4.0.1-beta-24422-01",
+        "microsoft.xunit.runner.uwp": "1.0.3-prerelease-00614-01",
+        "Microsoft.DotNet.TestILC": {
+          "version": "1.4.24208-prerelease",
+          "include": "contentFiles"
+        }
+      }
     }
-  },
-  "runtimes": {
-    "win7-x64": {},
-    "win7-x86": {},
-    "ubuntu.14.04-x64": {},
-    "osx.10.10-x64": {},
-    "centos.7-x64": {},
-    "rhel.7-x64": {},
-    "debian.8.2-x64": {}
   }
 }

@@ -1,5 +1,4 @@
-﻿// Copyright (c) Justin Van Patten. All rights reserved.
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -26,10 +25,9 @@ namespace System.Collections.Tests
             return Convert.ToBase64String(bytes);
         }
 
-        protected override object CreateTValue(int seed)
-        {
-            return CreateTKey(seed);
-        }
+        protected override object CreateTValue(int seed) => CreateTKey(seed);
+
+        protected override Type ICollection_NonGeneric_CopyTo_IndexLargerThanArrayCount_ThrowType => typeof(ArgumentOutOfRangeException);
 
         #endregion
 

@@ -3,13 +3,17 @@
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.props))\dir.props" />
 
   <PropertyGroup>
-    <PackageTargetRuntime>win7</PackageTargetRuntime>
+    <PackageTargetRuntime>win</PackageTargetRuntime>
     <PreventImplementationReference>true</PreventImplementationReference>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\System.Console.csproj" >
       <OSGroup>Windows_NT</OSGroup>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\System.Console.csproj" >
+      <OSGroup>Windows_NT</OSGroup>
+      <TargetGroup>netcore50</TargetGroup>
     </ProjectReference>
     <ExternalOnTargetFramework Include="net" />
   </ItemGroup>

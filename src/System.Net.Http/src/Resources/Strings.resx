@@ -351,7 +351,13 @@
   <data name="net_http_unix_invalid_response" xml:space="preserve">
     <value>The server returned an invalid or unrecognized response.</value>
   </data>
+  <data name="net_http_unix_handler_disposed" xml:space="preserve">
+    <value>The handler was disposed of while active operations were in progress.</value>
+  </data>
   <data name="net_http_buffer_insufficient_length" xml:space="preserve">
     <value>The buffer was not long enough.</value>
+  </data>
+  <data name="net_http_response_headers_exceeded_length" xml:space="preserve">
+    <value>The HTTP response headers length exceeded the set limit of {0} bytes.</value>
   </data>
 </root>

@@ -2,10 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Text;
+using System.Collections.Generic;
 using System.Net.Test.Common;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
 
 using Xunit;
 
@@ -29,6 +30,7 @@ namespace System.Net.Sockets.Tests
             }
         }
 
+        [ActiveIssue(11088, PlatformID.Windows)]
         [ConditionalFact(nameof(NoSocketsReuseUnicastPortSupport))]
         public void ReuseUnicastPort_CreateSocketGetOption_NoSocketsReuseUnicastPortSupport_Throws()
         {
@@ -47,6 +49,7 @@ namespace System.Net.Sockets.Tests
             Assert.Equal(0, optionValue);
         }
 
+        [ActiveIssue(11088, PlatformID.Windows)]
         [ConditionalFact(nameof(NoSocketsReuseUnicastPortSupport))]
         public void ReuseUnicastPort_CreateSocketSetOption_NoSocketsReuseUnicastPortSupport_Throws()
         {
@@ -94,11 +97,26 @@ namespace System.Net.Sockets.Tests
             }
         }
 
-        [Theory]
-        [InlineData(0)] // Any
-        [InlineData(1)] // Loopback
-        [PlatformSpecific(~PlatformID.OSX)] // Receive times out on loopback interface
-        public void MulticastInterface_Set_ValidIndex_Succeeds(int interfaceIndex)
+        [Fact]
+        public async Task MulticastInterface_Set_AnyInterface_Succeeds()
+        {
+            // On all platforms, index 0 means "any interface"
+            await MulticastInterface_Set_Helper(0);
+        }
+
+        [Fact]
+        [PlatformSpecific(PlatformID.Windows)] // see comment below
+        public async Task MulticastInterface_Set_Loopback_Succeeds()
+        {
+            // On Windows, we can apparently assume interface 1 is "loopback."  On other platforms, this is not a
+            // valid assumption.  We could maybe use NetworkInterface.LoopbackInterfaceIndex to get the index, but
+            // this would introduce a dependency on System.Net.NetworkInformation, which depends on System.Net.Sockets,
+            // which is what we're testing here....  So for now, we'll just assume "loopback == 1" and run this on
+            // Windows only.
+            await MulticastInterface_Set_Helper(1);
+        }
+
+        private async Task MulticastInterface_Set_Helper(int interfaceIndex)
         {
             IPAddress multicastAddress = IPAddress.Parse("239.1.2.3");
             string message = "hello";
@@ -111,10 +129,16 @@ namespace System.Net.Sockets.Tests
                 receiveSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(multicastAddress, interfaceIndex));
 
                 sendSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.HostToNetworkOrder(interfaceIndex));
-                sendSocket.SendTo(Encoding.UTF8.GetBytes(message), new IPEndPoint(multicastAddress, port));
 
                 var receiveBuffer = new byte[1024];
-                int bytesReceived = receiveSocket.Receive(receiveBuffer);
+                var receiveTask = receiveSocket.ReceiveAsync(new ArraySegment<byte>(receiveBuffer), SocketFlags.None);
+
+                for (int i = 0; i < TestSettings.UDPRedundancy; i++)
+                {
+                    sendSocket.SendTo(Encoding.UTF8.GetBytes(message), new IPEndPoint(multicastAddress, port));
+                }
+
+                int bytesReceived = await receiveTask;
                 string receivedMessage = Encoding.UTF8.GetString(receiveBuffer, 0, bytesReceived);
 
                 Assert.Equal(receivedMessage, message);
@@ -129,6 +153,55 @@ namespace System.Net.Sockets.Tests
             {
                 Assert.Throws<SocketException>(() =>
                     s.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.HostToNetworkOrder(interfaceIndex)));
+            }
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void FailedConnect_GetSocketOption_SocketOptionNameError(bool simpleGet)
+        {
+            using (var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { Blocking = false })
+            {
+                // Fail a Connect
+                using (var server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
+                {
+                    server.Bind(new IPEndPoint(IPAddress.Loopback, 0)); // bind but don't listen
+                    Assert.ThrowsAny<Exception>(() => client.Connect(server.LocalEndPoint));
+                }
+
+                // Verify via Select that there's an error
+                const int FailedTimeout = 10 * 1000 * 1000; // 10 seconds
+                var errorList = new List<Socket> { client };
+                Socket.Select(null, null, errorList, FailedTimeout);
+                Assert.Equal(1, errorList.Count);
+
+                // Get the last error and validate it's what's expected
+                int errorCode;
+                if (simpleGet)
+                {
+                    errorCode = (int)client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Error);
+                }
+                else
+                {
+                    byte[] optionValue = new byte[sizeof(int)];
+                    client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Error, optionValue);
+                    errorCode = BitConverter.ToInt32(optionValue, 0);
+                }
+                Assert.Equal((int)SocketError.ConnectionRefused, errorCode);
+
+                // Then get it again
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    // The Windows implementation doesn't clear the error code after retrieved.
+                    // https://github.com/dotnet/corefx/issues/8464
+                    Assert.Equal(errorCode, (int)client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Error));
+                }
+                else
+                {
+                    // The Unix implementation matches the getsockopt and MSDN docs and clears the error code as part of retrieval.
+                    Assert.Equal((int)SocketError.Success, (int)client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Error));
+                }
             }
         }
 

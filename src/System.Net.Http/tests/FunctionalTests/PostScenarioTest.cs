@@ -23,13 +23,13 @@ namespace System.Net.Http.Functional.Tests
         private const string UserName = "user1";
         private const string Password = "password1";
         private readonly static Uri BasicAuthServerUri =
-            HttpTestServers.BasicAuthUriForCreds(false, UserName, Password);
+            Configuration.Http.BasicAuthUriForCreds(false, UserName, Password);
         private readonly static Uri SecureBasicAuthServerUri =
-            HttpTestServers.BasicAuthUriForCreds(true, UserName, Password);
+            Configuration.Http.BasicAuthUriForCreds(true, UserName, Password);
 
         private readonly ITestOutputHelper _output;
 
-        public readonly static object[][] EchoServers = HttpTestServers.EchoServers;
+        public readonly static object[][] EchoServers = Configuration.Http.EchoServers;
 
         public readonly static object[][] BasicAuthEchoServers =
             new object[][]
@@ -105,6 +105,23 @@ namespace System.Net.Http.Functional.Tests
         {
             await PostHelper(serverUri, ExpectedContent, new StringContent(ExpectedContent),
                 useContentLengthUpload: false, useChunkedEncodingUpload: false);
+        }
+
+        [Theory]
+        [InlineData(5 * 1024)]
+        [InlineData(63 * 1024)]
+        public async Task PostLongerContentLengths_UsesChunkedSemantics(int contentLength)
+        {
+            var rand = new Random(42);
+            var sb = new StringBuilder(contentLength);
+            for (int i = 0; i < contentLength; i++)
+            {
+                sb.Append((char)(rand.Next(0, 26) + 'a'));
+            }
+            string content = sb.ToString();
+
+            await PostHelper(Configuration.Http.RemoteEchoServer, content, new StringContent(content),
+                useContentLengthUpload: true, useChunkedEncodingUpload: false);
         }
 
         [Theory, MemberData(nameof(BasicAuthEchoServers))]

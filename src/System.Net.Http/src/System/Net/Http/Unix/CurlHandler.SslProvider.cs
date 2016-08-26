@@ -20,15 +20,12 @@ namespace System.Net.Http
     {
         private static class SslProvider
         {
-            private static readonly Interop.Http.SslCtxCallback s_sslCtxCallback = SetSslCtxVerifyCallback;
+            private static readonly Interop.Http.SslCtxCallback s_sslCtxCallback = SslCtxCallback;
             private static readonly Interop.Ssl.AppVerifyCallback s_sslVerifyCallback = VerifyCertChain;
 
             internal static void SetSslOptions(EasyRequest easy, ClientCertificateOption clientCertOption)
             {
                 Debug.Assert(clientCertOption == ClientCertificateOption.Automatic || clientCertOption == ClientCertificateOption.Manual);
-
-                // Disable SSLv2/SSLv3, allow TLSv1.*
-                easy.SetCurlOption(Interop.Http.CURLoption.CURLOPT_SSLVERSION, (long)Interop.Http.CurlSslVersion.CURL_SSLVERSION_TLSv1);
 
                 // Create a client certificate provider if client certs may be used.
                 X509Certificate2Collection clientCertificates = easy._handler._clientCertificates;
@@ -65,6 +62,8 @@ namespace System.Net.Http
                             // We don't change the SSL_VERIFYPEER setting, as setting it to 0 will cause
                             // SSL and libcurl to ignore the result of the server callback.
                         }
+
+                        // The allowed SSL protocols will be set in the configuration callback.
                         break;
 
                     case CURLcode.CURLE_UNKNOWN_OPTION: // Curl 7.38 and prior
@@ -73,7 +72,7 @@ namespace System.Net.Http
                         // with relation to handling of certificates.  But if that's not the case, failing to 
                         // register the callback will result in those options not being factored in, which is
                         // a significant enough error that we need to fail.
-                        EventSourceTrace("CURLOPT_SSL_CTX_FUNCTION not supported: {0}", answer);
+                        EventSourceTrace("CURLOPT_SSL_CTX_FUNCTION not supported: {0}", answer, easy: easy);
                         if (certProvider != null ||
                             easy._handler.ServerCertificateValidationCallback != null ||
                             easy._handler.CheckCertificateRevocationList)
@@ -81,6 +80,10 @@ namespace System.Net.Http
                             throw new PlatformNotSupportedException(
                                 SR.Format(SR.net_http_unix_invalid_certcallback_option, CurlVersionDescription, CurlSslVersionDescription));
                         }
+
+                        // Since there won't be a callback to configure the allowed SSL protocols, configure them here.
+                        SetSslVersion(easy);
+
                         break;
 
                     default:
@@ -89,59 +92,103 @@ namespace System.Net.Http
                 }
             }
 
-            private static CURLcode SetSslCtxVerifyCallback(
-                IntPtr curl,
-                IntPtr sslCtx,
-                IntPtr userPointer)
+            private static void SetSslVersion(EasyRequest easy, IntPtr sslCtx = default(IntPtr))
             {
-                using (SafeSslContextHandle ctx = new SafeSslContextHandle(sslCtx, ownsHandle: false))
+                // Get the requested protocols.
+                System.Security.Authentication.SslProtocols protocols = easy._handler.ActualSslProtocols;
+
+                // We explicitly disallow choosing SSL2/3. Make sure they were filtered out.
+                Debug.Assert((protocols & ~SecurityProtocol.AllowedSecurityProtocols) == 0, 
+                    "Disallowed protocols should have been filtered out.");
+
+                // libcurl supports options for either enabling all of the TLS1.* protocols or enabling 
+                // just one of them; it doesn't currently support enabling two of the three, e.g. you can't 
+                // pick TLS1.1 and TLS1.2 but not TLS1.0, but you can select just TLS1.2.
+                Interop.Http.CurlSslVersion curlSslVersion;
+                switch (protocols)
                 {
-                    Interop.Ssl.SslCtxSetCertVerifyCallback(ctx, s_sslVerifyCallback, curl);
+                    case System.Security.Authentication.SslProtocols.Tls:
+                        curlSslVersion = Interop.Http.CurlSslVersion.CURL_SSLVERSION_TLSv1_0;
+                        break;
+                    case System.Security.Authentication.SslProtocols.Tls11:
+                        curlSslVersion = Interop.Http.CurlSslVersion.CURL_SSLVERSION_TLSv1_1;
+                        break;
+                    case System.Security.Authentication.SslProtocols.Tls12:
+                        curlSslVersion = Interop.Http.CurlSslVersion.CURL_SSLVERSION_TLSv1_2;
+                        break;
 
-                    if (userPointer == IntPtr.Zero)
+                    case System.Security.Authentication.SslProtocols.Tls | System.Security.Authentication.SslProtocols.Tls11 | System.Security.Authentication.SslProtocols.Tls12:
+                        curlSslVersion = Interop.Http.CurlSslVersion.CURL_SSLVERSION_TLSv1;
+                        break;
+
+                    default:
+                        throw new NotSupportedException(SR.net_securityprotocolnotsupported);
+                }
+
+                try
+                {
+                    easy.SetCurlOption(Interop.Http.CURLoption.CURLOPT_SSLVERSION, (long)curlSslVersion);
+                }
+                catch (CurlException e) when (e.HResult == (int)CURLcode.CURLE_UNKNOWN_OPTION)
+                {
+                    throw new NotSupportedException(SR.net_securityprotocolnotsupported, e);
+                }
+            }
+
+            private static CURLcode SslCtxCallback(IntPtr curl, IntPtr sslCtx, IntPtr userPointer)
+            {
+                // Configure the SSL protocols allowed.
+                EasyRequest easy;
+                if (!TryGetEasyRequest(curl, out easy))
+                {
+                    return CURLcode.CURLE_ABORTED_BY_CALLBACK;
+                }
+                Interop.Ssl.SetProtocolOptions(sslCtx, easy._handler.ActualSslProtocols);
+
+                // Configure the SSL server certificate verification callback.
+                Interop.Ssl.SslCtxSetCertVerifyCallback(sslCtx, s_sslVerifyCallback, curl);
+
+                // If a client certificate provider was provided, also configure the client certificate callback.
+                if (userPointer != IntPtr.Zero)
+                {
+                    try
                     {
-                        EventSourceTrace("Not using client certificate callback");
+                        // Provider is passed in via a GCHandle.  Get the provider, which contains
+                        // the client certificate callback delegate.
+                        GCHandle handle = GCHandle.FromIntPtr(userPointer);
+                        ClientCertificateProvider provider = (ClientCertificateProvider)handle.Target;
+                        if (provider == null)
+                        {
+                            Debug.Fail($"Expected non-null provider in {nameof(SslCtxCallback)}");
+                            return CURLcode.CURLE_ABORTED_BY_CALLBACK;
+                        }
+
+                        // Register the callback.
+                        Interop.Ssl.SslCtxSetClientCertCallback(sslCtx, provider._callback);
+                        EventSourceTrace("Registered client certificate callback.", easy: easy);
                     }
-                    else
+                    catch (Exception e)
                     {
-                        ClientCertificateProvider provider = null;
-                        try
-                        {
-                            GCHandle handle = GCHandle.FromIntPtr(userPointer);
-                            provider = (ClientCertificateProvider)handle.Target;
-                        }
-                        catch (InvalidCastException)
-                        {
-                            Debug.Fail("ClientCertificateProvider wasn't the GCHandle's Target");
-                            return CURLcode.CURLE_ABORTED_BY_CALLBACK;
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            Debug.Fail("Invalid GCHandle in CurlSslCallback");
-                            return CURLcode.CURLE_ABORTED_BY_CALLBACK;
-                        }
-
-                        Debug.Assert(provider != null, "Expected non-null sslCallback in curlCallBack");
-                        Interop.Ssl.SslCtxSetClientCertCallback(ctx, provider._callback);
+                        Debug.Fail($"Exception in {nameof(SslCtxCallback)}", e.ToString());
+                        return CURLcode.CURLE_ABORTED_BY_CALLBACK;
                     }
                 }
+
                 return CURLcode.CURLE_OK;
             }
 
             private static bool TryGetEasyRequest(IntPtr curlPtr, out EasyRequest easy)
             {
                 Debug.Assert(curlPtr != IntPtr.Zero, "curlPtr is not null");
+
                 IntPtr gcHandlePtr;
                 CURLcode getInfoResult = Interop.Http.EasyGetInfoPointer(curlPtr, CURLINFO.CURLINFO_PRIVATE, out gcHandlePtr);
-                Debug.Assert(getInfoResult == CURLcode.CURLE_OK, "Failed to get info on a completing easy handle");
                 if (getInfoResult == CURLcode.CURLE_OK)
                 {
-                    GCHandle handle = GCHandle.FromIntPtr(gcHandlePtr);
-                    easy = handle.Target as EasyRequest;
-                    Debug.Assert(easy != null, "Expected non-null EasyRequest in GCHandle");
-                    return easy != null;
+                    return MultiAgent.TryGetEasyRequestFromGCHandle(gcHandlePtr, out easy);
                 }
 
+                Debug.Fail($"Failed to get info on a completing easy handle: {getInfoResult}");
                 easy = null;
                 return false;
             }
@@ -160,15 +207,12 @@ namespace System.Net.Http
                     IntPtr leafCertPtr = Interop.Crypto.X509StoreCtxGetTargetCert(storeCtx);
                     if (IntPtr.Zero == leafCertPtr)
                     {
-                        EventSourceTrace("Invalid certificate pointer");
+                        EventSourceTrace("Invalid certificate pointer", easy: easy);
                         return 0;
                     }
 
                     using (X509Certificate2 leafCert = new X509Certificate2(leafCertPtr))
                     {
-                        // Set up the CBT with this certificate.
-                        easy._requestContentStream?.SetChannelBindingToken(leafCert);
-
                         // We need to respect the user's server validation callback if there is one.  If there isn't one,
                         // we can start by first trying to use OpenSSL's verification, though only if CRL checking is disabled,
                         // as OpenSSL doesn't do that.
@@ -241,7 +285,7 @@ namespace System.Net.Http
                                 }
                                 catch (Exception exc)
                                 {
-                                    EventSourceTrace("Server validation callback threw exception: {0}", exc);
+                                    EventSourceTrace("Server validation callback threw exception: {0}", exc, easy: easy);
                                     easy.FailRequest(exc);
                                     success = false;
                                 }

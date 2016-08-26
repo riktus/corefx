@@ -64,8 +64,7 @@ namespace System.Text.RegularExpressions
         }
 
         internal Match(Regex regex, int capcount, String text, int begpos, int len, int startpos)
-
-        : base(text, new int[2], 0)
+            : base(text, new int[2], 0, "0")
         {
             _regex = regex;
             _matchcount = new int[capcount];
@@ -144,7 +143,7 @@ namespace System.Text.RegularExpressions
 
             if (repl == null || !repl.Pattern.Equals(replacement))
             {
-                repl = RegexParser.ParseReplacement(replacement, _regex._caps, _regex._capsize, _regex._capnames, _regex._roptions);
+                repl = RegexParser.ParseReplacement(replacement, _regex._caps, _regex.capsize, _regex._capnames, _regex.roptions);
                 _regex._replref.Cache(repl);
             }
 

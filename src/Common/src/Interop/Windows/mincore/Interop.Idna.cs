@@ -16,21 +16,19 @@ internal partial class Interop
         [DllImport("api-ms-win-core-localization-l1-2-0.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern int IdnToAscii(
                                         uint dwFlags,
-                                        string lpUnicodeCharStr,
+                                        IntPtr lpUnicodeCharStr,
                                         int cchUnicodeChar,
                                         [System.Runtime.InteropServices.OutAttribute()]
-
-                                        char[] lpASCIICharStr,
+                                        IntPtr lpASCIICharStr,
                                         int cchASCIIChar);
 
         [DllImport("api-ms-win-core-localization-l1-2-0.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern int IdnToUnicode(
                                         uint dwFlags,
-                                        string lpASCIICharStr,
+                                        IntPtr lpASCIICharStr,
                                         int cchASCIIChar,
                                         [System.Runtime.InteropServices.OutAttribute()]
-
-                                        char[] lpUnicodeCharStr,
+                                        IntPtr lpUnicodeCharStr,
                                         int cchUnicodeChar);
 
         internal const int IDN_ALLOW_UNASSIGNED = 0x1;

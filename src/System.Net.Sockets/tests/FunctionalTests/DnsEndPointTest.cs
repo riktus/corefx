@@ -50,7 +50,6 @@ namespace System.Net.Sockets.Tests
         {
             using (Socket sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
             {
-                // TODO: Behavior difference from .Net Desktop. This will actually throw InternalSocketException.
                 SocketException ex = Assert.ThrowsAny<SocketException>(() =>
                 {
                     sock.Connect(new DnsEndPoint("notahostname.invalid.corp.microsoft.com", UnusedPort));
@@ -60,7 +59,6 @@ namespace System.Net.Sockets.Tests
                 Assert.True((errorCode == SocketError.HostNotFound) || (errorCode == SocketError.NoData),
                     "SocketErrorCode: {0}" + errorCode);
 
-                // TODO: Behavior difference from .Net Desktop. This will actually throw InternalSocketException.
                 ex = Assert.ThrowsAny<SocketException>(() =>
                 {
                     sock.Connect(new DnsEndPoint("localhost", UnusedPort));
@@ -120,7 +118,6 @@ namespace System.Net.Sockets.Tests
         {
             using (Socket sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
             {
-                // TODO: Behavior difference from .Net Desktop. This will actually throw InternalSocketException.
                 SocketException ex = Assert.ThrowsAny<SocketException>(() =>
                 {
                     IAsyncResult result = sock.BeginConnect(new DnsEndPoint("notahostname.invalid.corp.microsoft.com", UnusedPort), null, null);
@@ -131,7 +128,6 @@ namespace System.Net.Sockets.Tests
                 Assert.True((errorCode == SocketError.HostNotFound) || (errorCode == SocketError.NoData),
                     "SocketErrorCode: {0}" + errorCode);
 
-                // TODO: Behavior difference from .Net Desktop. This will actually throw InternalSocketException.
                 ex = Assert.ThrowsAny<SocketException>(() =>
                 {
                     IAsyncResult result = sock.BeginConnect(new DnsEndPoint("localhost", UnusedPort), null, null);
@@ -178,7 +174,7 @@ namespace System.Net.Sockets.Tests
             bool willRaiseEvent = sock.ConnectAsync(args);
             if (willRaiseEvent)
             {
-                Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+                Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
             }
 
             Assert.Equal(SocketError.Success, args.SocketError);
@@ -208,7 +204,7 @@ namespace System.Net.Sockets.Tests
             bool willRaiseEvent = sock.ConnectAsync(args);
             if (willRaiseEvent)
             {
-                Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+                Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
             }
 
             AssertHostNotFoundOrNoData(args);
@@ -236,7 +232,7 @@ namespace System.Net.Sockets.Tests
             bool willRaiseEvent = sock.ConnectAsync(args);
             if (willRaiseEvent)
             {
-                Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+                Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
             }
 
             Assert.Equal(SocketError.ConnectionRefused, args.SocketError);
@@ -270,7 +266,7 @@ namespace System.Net.Sockets.Tests
 
             Assert.True(Socket.ConnectAsync(SocketType.Stream, ProtocolType.Tcp, args));
 
-            Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+            Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
 
             Assert.Equal(SocketError.Success, args.SocketError);
             Assert.Null(args.ConnectByNameError);
@@ -285,7 +281,7 @@ namespace System.Net.Sockets.Tests
 
             Assert.True(Socket.ConnectAsync(SocketType.Stream, ProtocolType.Tcp, args));
 
-            Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+            Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
 
             Assert.Equal(SocketError.Success, args.SocketError);
             Assert.Null(args.ConnectByNameError);
@@ -315,7 +311,7 @@ namespace System.Net.Sockets.Tests
                 OnConnectAsyncCompleted(null, args);
             }
 
-            Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+            Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
 
             AssertHostNotFoundOrNoData(args);
 
@@ -340,7 +336,7 @@ namespace System.Net.Sockets.Tests
                 OnConnectAsyncCompleted(null, args);
             }
 
-            Assert.True(complete.WaitOne(Configuration.PassingTestTimeout), "Timed out while waiting for connection");
+            Assert.True(complete.WaitOne(TestSettings.PassingTestTimeout), "Timed out while waiting for connection");
 
             Assert.Equal(SocketError.ConnectionRefused, args.SocketError);
             Assert.True(args.ConnectByNameError is SocketException);

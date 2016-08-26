@@ -33,6 +33,9 @@ internal static partial class Interop
         [DllImport(Libraries.HttpNative, EntryPoint = "HttpNative_EasyGetInfoPointer")]
         public static extern CURLcode EasyGetInfoPointer(IntPtr handle, CURLINFO info, out IntPtr value);
 
+        [DllImport(Libraries.HttpNative, EntryPoint = "HttpNative_EasyGetInfoPointer")]
+        public static extern CURLcode EasyGetInfoPointer(SafeCurlHandle handle, CURLINFO info, out IntPtr value);
+
         [DllImport(Libraries.HttpNative, EntryPoint = "HttpNative_EasyGetInfoLong")]
         public static extern CURLcode EasyGetInfoLong(SafeCurlHandle handle, CURLINFO info, out long value);
 
@@ -85,6 +88,7 @@ internal static partial class Interop
         // Curl options are of the format <type base> + <n>
         private const int CurlOptionLongBase = 0;
         private const int CurlOptionObjectPointBase = 10000;
+        private const int CurlOptionOffTBase = 30000;
 
         // Enum for constants defined for the enum CURLoption in curl.h
         internal enum CURLoption
@@ -102,9 +106,12 @@ internal static partial class Interop
             CURLOPT_MAXREDIRS = CurlOptionLongBase + 68,
             CURLOPT_SSL_VERIFYHOST = CurlOptionLongBase + 81,
             CURLOPT_HTTP_VERSION = CurlOptionLongBase + 84,
+            CURLOPT_DNS_CACHE_TIMEOUT = CurlOptionLongBase + 92,
             CURLOPT_NOSIGNAL = CurlOptionLongBase + 99,
             CURLOPT_PROXYTYPE = CurlOptionLongBase + 101,
             CURLOPT_HTTPAUTH = CurlOptionLongBase + 107,
+            CURLOPT_CONNECTTIMEOUT_MS = CurlOptionLongBase + 156,
+            CURLOPT_ADDRESS_SCOPE = CurlOptionLongBase + 171,
             CURLOPT_PROTOCOLS = CurlOptionLongBase + 181,
             CURLOPT_REDIR_PROTOCOLS = CurlOptionLongBase + 182,
 
@@ -119,6 +126,9 @@ internal static partial class Interop
             CURLOPT_COPYPOSTFIELDS = CurlOptionObjectPointBase + 165,
             CURLOPT_USERNAME = CurlOptionObjectPointBase + 173,
             CURLOPT_PASSWORD = CurlOptionObjectPointBase + 174,
+
+            CURLOPT_INFILESIZE_LARGE = CurlOptionOffTBase + 115,
+            CURLOPT_POSTFIELDSIZE_LARGE = CurlOptionOffTBase + 120,
         }
 
         internal enum ReadWriteFunction
@@ -144,12 +154,16 @@ internal static partial class Interop
         // Enum for constants defined for CURL_SSLVERSION
         internal enum CurlSslVersion
         {
-            CURL_SSLVERSION_TLSv1 = 1, /* TLS 1.x */
+            CURL_SSLVERSION_TLSv1 = 1,   /* TLS 1.x */
+            CURL_SSLVERSION_TLSv1_0 = 4, /* TLS 1.0 */
+            CURL_SSLVERSION_TLSv1_1 = 5, /* TLS 1.1 */
+            CURL_SSLVERSION_TLSv1_2 = 6, /* TLS 1.2 */
         };
 
         // Enum for constants defined for the enum CURLINFO in curl.h
         internal enum CURLINFO
         {
+            CURLINFO_EFFECTIVE_URL = CurlInfoStringBase + 1,
             CURLINFO_PRIVATE = CurlInfoStringBase + 21,
             CURLINFO_HTTPAUTH_AVAIL = CurlInfoLongBase + 23,
         }

@@ -15,22 +15,30 @@ namespace System.Net.Http
     {
         private sealed class CurlResponseMessage : HttpResponseMessage
         {
-            internal readonly EasyRequest _easy;
-            private readonly CurlResponseStream _responseStream;
+            internal uint _headerBytesReceived;
 
             internal CurlResponseMessage(EasyRequest easy)
             {
                 Debug.Assert(easy != null, "Expected non-null EasyRequest");
-                _easy = easy;
-                _responseStream = new CurlResponseStream(easy);
                 RequestMessage = easy._requestMessage;
-                Content = new StreamContent(_responseStream);
+                ResponseStream = new CurlResponseStream(easy);
+                Content = new StreamContent(ResponseStream);
+
+                // On Windows, we pass the equivalent of the easy._cancellationToken
+                // in to StreamContent's ctor.  This in turn passes that token through
+                // to ReadAsync operations on the stream response stream when HttpClient
+                // reads from the response stream to buffer it with ResponseContentRead.
+                // We don't need to do that here in the Unix implementation as, until the
+                // SendAsync task completes, the handler will have registered with the
+                // CancellationToken with an action that will cancel all work related to
+                // the easy handle if cancellation occurs, and that includes canceling any
+                // pending reads on the response stream.  It wouldn't hurt anything functionally
+                // to still pass easy._cancellationToken here, but it will increase costs
+                // a bit, as each read will then need to allocate a larger state object as
+                // well as register with and unregister from the cancellation token.
             }
 
-            internal CurlResponseStream ResponseStream
-            {
-                get { return _responseStream; }
-            }
+            internal CurlResponseStream ResponseStream { get; }
         }
 
         /// <summary>
@@ -99,9 +107,9 @@ namespace System.Net.Http
                 _easy = easy;
             }
 
-            public override bool CanRead { get { return !_disposed; } }
-            public override bool CanWrite { get { return false; } }
-            public override bool CanSeek { get { return false; } }
+            public override bool CanRead => !_disposed;
+            public override bool CanWrite => false;
+            public override bool CanSeek => false;
 
             public override long Length
             {
@@ -158,7 +166,7 @@ namespace System.Net.Http
             /// <see cref="Interop.libcurl.CURL_WRITEFUNC_PAUSE"/> if the data wasn't copied and the connection
             /// should be paused until a reader is available.
             /// </returns>
-            internal ulong TransferDataToStream(IntPtr pointer, long length)
+            internal ulong TransferDataToResponseStream(IntPtr pointer, long length)
             {
                 Debug.Assert(pointer != IntPtr.Zero, "Expected a non-null pointer");
                 Debug.Assert(length >= 0, "Expected a non-negative length");
@@ -180,12 +188,12 @@ namespace System.Net.Http
                     // we need to pause until the existing data is consumed or until there's a waiting read.
                     if (_remainingDataCount > 0)
                     {
-                        EventSourceTrace("Pausing. Remaining bytes: {0}", _remainingDataCount);
+                        EventSourceTrace("Pausing transfer to response stream. Remaining bytes: {0}", _remainingDataCount);
                         return Interop.Http.CURL_WRITEFUNC_PAUSE;
                     }
                     else if (_pendingReadRequest == null)
                     {
-                        EventSourceTrace("Pausing. No pending read request");
+                        EventSourceTrace("Pausing transfer to response stream. No pending read request");
                         return Interop.Http.CURL_WRITEFUNC_PAUSE;
                     }
 
@@ -194,6 +202,7 @@ namespace System.Net.Http
                     int numBytesForTask = (int)Math.Min(length, _pendingReadRequest._count);
                     Debug.Assert(numBytesForTask > 0, "We must be copying a positive amount.");
                     Marshal.Copy(pointer, _pendingReadRequest._buffer, _pendingReadRequest._offset, numBytesForTask);
+                    EventSourceTrace("Completing pending read with {0} bytes", numBytesForTask);
                     _pendingReadRequest.SetResult(numBytesForTask);
                     ClearPendingReadRequest();
 
@@ -219,6 +228,7 @@ namespace System.Net.Http
                         }
 
                         // Copy the remaining data to the buffer
+                        EventSourceTrace("Storing {0} bytes for later", _remainingDataCount);
                         Marshal.Copy(remainingPointer, _remainingData, 0, _remainingDataCount);
                     }
 
@@ -289,12 +299,14 @@ namespace System.Net.Http
                         Debug.Assert(_remainingDataCount >= 0, "The remaining count should never go negative");
                         Debug.Assert(_remainingDataOffset <= _remainingData.Length, "The remaining offset should never exceed the buffer size");
 
+                        EventSourceTrace("Read {0} bytes", bytesToCopy);
                         return Task.FromResult(bytesToCopy);
                     }
 
                     // If the stream has already been completed, complete the read immediately.
                     if (_completed == s_completionSentinel)
                     {
+                        EventSourceTrace("Stream already completed");
                         return s_zeroTask;
                     }
 
@@ -325,6 +337,7 @@ namespace System.Net.Http
                                 {
                                     if (crsRef._stream._pendingReadRequest == crsRef)
                                     {
+                                        crsRef._stream.EventSourceTrace("Canceling");
                                         crsRef.TrySetCanceled(crsRef._token);
                                         crsRef._stream.ClearPendingReadRequest();
                                     }
@@ -340,12 +353,13 @@ namespace System.Net.Http
                     }
 
                     _easy._associatedMultiAgent.RequestUnpause(_easy);
+                    _easy._selfStrongToWeakReference.MakeStrong(); // convert from a weak to a strong ref to keep the easy alive during the read
                     return _pendingReadRequest.Task;
                 }
             }
 
             /// <summary>Notifies the stream that no more data will be written.</summary>
-            internal void SignalComplete(Exception error = null)
+            internal void SignalComplete(Exception error = null, bool forceCancel = false)
             {
                 lock (_lockObject)
                 {
@@ -354,13 +368,24 @@ namespace System.Net.Http
                     // If we already completed, nothing more to do
                     if (_completed != null)
                     {
+                        EventSourceTrace("Already completed");
                         return;
                     }
 
                     // Mark ourselves as being completed
-                    _completed = error != null ?
-                        error :
-                        s_completionSentinel;
+                    EventSourceTrace("Marking as complete");
+                    _completed = error ?? s_completionSentinel;
+
+                    // If the request wasn't already completed, and if requested, send a cancellation
+                    // request to ensure that the connection gets cleaned up.  This is only necessary
+                    // to do if this method is being called for a reason other than the request/response
+                    // completing naturally, e.g. if the response stream is being disposed of before
+                    // all of the response has been downloaded.
+                    if (forceCancel)
+                    {
+                        EventSourceTrace("Completing the response stream prematurely.");
+                        _easy._associatedMultiAgent.RequestCancel(_easy);
+                    }
 
                     // If there's a pending read request, complete it, either with 0 bytes for success
                     // or with the exception/CancellationToken for failure.
@@ -368,6 +393,7 @@ namespace System.Net.Http
                     {
                         if (_completed == s_completionSentinel)
                         {
+                            EventSourceTrace("Completing pending read with 0 bytes");
                             _pendingReadRequest.TrySetResult(0);
                         }
                         else
@@ -389,32 +415,45 @@ namespace System.Net.Http
                 }
             }
 
-            /// <summary>Clears a pending read request, making sure any cancellation registration is unregistered.</summary>
+            /// <summary>
+            /// Clears a pending read request, making sure any cancellation registration is unregistered and
+            /// ensuring that the EasyRequest has dropped its strong reference to itself, which should only
+            /// exist while an active async operation is going.
+            /// </summary>
             private void ClearPendingReadRequest()
             {
                 Debug.Assert(Monitor.IsEntered(_lockObject), "Lock object must be held to manipulate _pendingReadRequest");
                 Debug.Assert(_pendingReadRequest != null, "Should only be clearing the pending read request if there is one");
+                Debug.Assert(_pendingReadRequest.Task.IsCompleted, "The pending request should have been completed");
 
-                var crs = _pendingReadRequest as CancelableReadState;
-                if (crs != null)
-                {
-                    crs._registration.Dispose();
-                }
-
+                (_pendingReadRequest as CancelableReadState)?._registration.Dispose();
                 _pendingReadRequest = null;
+
+                // The async operation has completed.  We no longer want to be holding a strong reference.
+                _easy._selfStrongToWeakReference.MakeWeak();
+            }
+
+            ~CurlResponseStream()
+            {
+                Dispose(disposing: false);
             }
 
             protected override void Dispose(bool disposing)
             {
-                if (disposing && !_disposed)
+                // disposing is ignored.  We need to SignalComplete whether this is due to Dispose
+                // or due to finalization, so that we don't leave Tasks uncompleted, don't leave
+                // connections paused, etc.
+
+                if (!_disposed)
                 {
+                    EventSourceTrace("Disposing response stream");
                     _disposed = true;
-                    SignalComplete();
+                    SignalComplete(forceCancel: true);
                 }
 
                 base.Dispose(disposing);
             }
-
+            
             private void CheckDisposed()
             {
                 if (_disposed)

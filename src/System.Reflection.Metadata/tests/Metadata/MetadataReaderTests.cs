@@ -74,29 +74,24 @@ namespace System.Reflection.Metadata.Tests
 
         internal static unsafe MetadataReader GetMetadataReader(byte[] peImage, out int metadataStartOffset, bool isModule = false, MetadataReaderOptions options = MetadataReaderOptions.Default, MetadataStringDecoder decoder = null)
         {
-            GCHandle pinned;
-            if (!peImages.TryGetValue(peImage, out pinned))
-            {
-                peImages.Add(peImage, pinned = GCHandle.Alloc(peImage, GCHandleType.Pinned));
-            }
+            GCHandle pinned = GetPinnedPEImage(peImage);
             var headers = new PEHeaders(new MemoryStream(peImage));
             metadataStartOffset = headers.MetadataStartOffset;
             return new MetadataReader((byte*)pinned.AddrOfPinnedObject() + headers.MetadataStartOffset, headers.MetadataSize, options, decoder);
         }
 
-        private List<CustomAttributeHandle> GetCustomAttributes(MetadataReader reader, int token)
+        internal static unsafe GCHandle GetPinnedPEImage(byte[] peImage)
         {
-            var attributes = new List<CustomAttributeHandle>();
-            foreach (var caHandle in reader.GetCustomAttributes(new EntityHandle((uint)token)))
+            GCHandle pinned;
+            if (!peImages.TryGetValue(peImage, out pinned))
             {
-                attributes.Add(caHandle);
+                peImages.Add(peImage, pinned = GCHandle.Alloc(peImage, GCHandleType.Pinned));
             }
 
-            return attributes;
+            return pinned;
         }
 
         #endregion
-
 
         [Fact]
         public unsafe void EmptyMetadata()
@@ -105,6 +100,7 @@ namespace System.Reflection.Metadata.Tests
 
             Assert.Throws<ArgumentNullException>(() => new MetadataReader(null, 10));
             Assert.Throws<ArgumentOutOfRangeException>(() => new MetadataReader(ptr, -10));
+            Assert.Throws<BadImageFormatException>(() => new MetadataReader(ptr, 0));
         }
 
         [Fact]
@@ -115,6 +111,18 @@ namespace System.Reflection.Metadata.Tests
             Assert.Equal(0x3c2, reader.GetHeapSize(HeapIndex.String));
             Assert.Equal(0x1cc, reader.GetHeapSize(HeapIndex.Blob));
             Assert.Equal(0x010, reader.GetHeapSize(HeapIndex.Guid));
+        }
+
+        [Fact]
+        public unsafe void PointerAndLength()
+        {
+            GCHandle pinned = GetPinnedPEImage(NetModule.AppCS);
+            var headers = new PEHeaders(new MemoryStream(NetModule.AppCS));
+            byte* ptr = (byte*)pinned.AddrOfPinnedObject() + headers.MetadataStartOffset;
+            var reader = new MetadataReader(ptr, headers.MetadataSize);
+
+            Assert.True(ptr == reader.MetadataPointer);
+            Assert.Equal(headers.MetadataSize, reader.MetadataLength);
         }
 
         [Fact]
@@ -2028,6 +2036,20 @@ namespace System.Reflection.Metadata.Tests
             }
         }
 
+        [Fact]
+        public void GetCustomAttributes()
+        {
+            var reader = GetMetadataReader(Interop.Interop_Mock01);
+
+            var attributes1 = reader.GetCustomAttributes(MetadataTokens.EntityHandle(0x02000006));
+            AssertEx.Equal(new[] { 0x16, 0x17, 0x18, 0x19 }, attributes1.Select(a => a.RowId));
+            Assert.Equal(4, attributes1.Count);
+
+            var attributes2 = reader.GetCustomAttributes(MetadataTokens.EntityHandle(0x02000000));
+            AssertEx.Equal(new int[0], attributes2.Select(a => a.RowId));
+            Assert.Equal(0, attributes2.Count);
+        }
+
         /// <summary>
         /// MethodSemantics Table
         ///     Semantic (2-byte unsigned)
@@ -2298,6 +2320,22 @@ namespace System.Reflection.Metadata.Tests
 
             Assert.Equal("Class1", name);
             Assert.Equal(0, genericParams.Count);
+        }
+
+        [Fact]
+        public void GetCustomDebugInformation()
+        {
+            using (var provider = MetadataReaderProvider.FromPortablePdbStream(new MemoryStream(PortablePdbs.DocumentsPdb)))
+            {
+                var reader = provider.GetMetadataReader();
+                var cdi1 = reader.GetCustomAttributes(MetadataTokens.EntityHandle(0x30000001));
+                AssertEx.Equal(new int[0], cdi1.Select(a => a.RowId));
+                Assert.Equal(0, cdi1.Count);
+
+                var cdi2 = reader.GetCustomAttributes(MetadataTokens.EntityHandle(0x03000000));
+                AssertEx.Equal(new int[0], cdi2.Select(a => a.RowId));
+                Assert.Equal(0, cdi2.Count);
+            }
         }
 
         [Fact]
@@ -2604,7 +2642,7 @@ namespace System.Reflection.Metadata.Tests
                     offsetToModuleTable = offsetToMetadata + peReader.GetMetadataReader().GetTableMetadataOffset(TableIndex.Module);
 
                     // skip root header
-                    BlobReader blobReader = new BlobReader(metadata.Pointer, metadata.Length);
+                    BlobReader blobReader = metadata.GetReader();
                     blobReader.ReadUInt32(); // signature
                     blobReader.ReadUInt16(); // major version
                     blobReader.ReadUInt16(); // minor version

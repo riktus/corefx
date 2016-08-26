@@ -7,8 +7,11 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,6 +46,8 @@ namespace System.Net.Http
         private bool useCookies;
         private DecompressionMethods automaticDecompression;
         private IWebProxy proxy;
+        private X509Certificate2Collection clientCertificates;
+        private IDictionary<String, Object> properties; // Only create dictionary when required.
 
         #endregion Fields
 
@@ -85,7 +90,7 @@ namespace System.Net.Http
                 if (!UseCookies)
                 {
                     throw new InvalidOperationException(String.Format(CultureInfo.InvariantCulture,
-                        SR.net_http_invalid_enable_first, "UseCookies", "true"));
+                        SR.net_http_invalid_enable_first, nameof(UseCookies), "true"));
                 }
                 CheckDisposedOrStarted();
                 cookieContainer = value;
@@ -158,7 +163,7 @@ namespace System.Net.Http
                 if (value != PreAuthenticate)
                 {
                     throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
-                        SR.net_http_value_not_supported, value, "PreAuthenticate"));
+                        SR.net_http_value_not_supported, value, nameof(PreAuthenticate)));
                 }
                 CheckDisposedOrStarted();
             }
@@ -218,7 +223,46 @@ namespace System.Net.Http
                 else
                 {
                     throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
-                        SR.net_http_value_not_supported, value, "Credentials"));
+                        SR.net_http_value_not_supported, value, nameof(Credentials)));
+                }
+            }
+        }
+
+        public ICredentials DefaultProxyCredentials
+        {
+            get
+            {
+                RTPasswordCredential rtCreds = rtFilter.ProxyCredential;
+                if (rtCreds == null)
+                {
+                    return null;
+                }
+
+                NetworkCredential creds = new NetworkCredential(rtCreds.UserName, rtCreds.Password);
+                return creds;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    CheckDisposedOrStarted();
+                    rtFilter.ProxyCredential = null;
+                }
+                else if (value == CredentialCache.DefaultCredentials)
+                {
+                    CheckDisposedOrStarted();
+                    // System managed
+                    rtFilter.ProxyCredential = null;
+                }
+                else if (value is NetworkCredential)
+                {
+                    CheckDisposedOrStarted();
+                    rtFilter.ProxyCredential = RTPasswordCredentialFromNetworkCredential((NetworkCredential)value);
+                }
+                else
+                {
+                    throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
+                        SR.net_http_value_not_supported, value, nameof(DefaultProxyCredentials)));
                 }
             }
         }
@@ -242,12 +286,22 @@ namespace System.Net.Http
                 if (value != MaxAutomaticRedirections)
                 {
                     throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
-                        SR.net_http_value_not_supported, value, "MaxAutomaticRedirections"));
+                        SR.net_http_value_not_supported, value, nameof(MaxAutomaticRedirections)));
                 }
                 CheckDisposedOrStarted();
             }
         }
 
+        public int MaxConnectionsPerServer
+        {
+            get { return (int)rtFilter.MaxConnectionsPerServer; }
+            set
+            {
+                CheckDisposedOrStarted();
+                rtFilter.MaxConnectionsPerServer = (uint)value;
+            }
+        }
+        
         public long MaxRequestContentBufferSize
         {
             get { return HttpContent.MaxBufferSize; }
@@ -259,9 +313,22 @@ namespace System.Net.Http
                 if (value > MaxRequestContentBufferSize)
                 {
                     throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
-                        SR.net_http_value_not_supported, value, "MaxRequestContentBufferSize"));
+                        SR.net_http_value_not_supported, value, nameof(MaxRequestContentBufferSize)));
                 }
                 CheckDisposedOrStarted();
+            }
+        }
+
+        public int MaxResponseHeadersLength
+        {
+            // Windows.Web.Http is built on WinINet. There is no maximum limit (except for out of memory)
+            // for received response headers. So, returning -1 (indicating no limit) is appropriate.
+            get { return -1; }
+
+            set
+            {
+                throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
+                    SR.net_http_value_not_supported, value, nameof(MaxResponseHeadersLength)));
             }
         }
 
@@ -270,6 +337,79 @@ namespace System.Net.Http
             get
             {
                 return s_RTCookieUsageBehaviorSupported.Value;
+            }
+        }
+
+        public X509CertificateCollection ClientCertificates
+        {
+            // TODO: Not yet implemented. Issue #7623.
+            get
+            {
+                if (clientCertificates == null)
+                {
+                    clientCertificates = new X509Certificate2Collection();
+                }
+
+                return clientCertificates;
+            }
+        }
+
+        public Func<HttpRequestMessage, X509Certificate2, X509Chain, SslPolicyErrors, bool> ServerCertificateCustomValidationCallback
+        {
+            // TODO: Not yet implemented. Issue #7623.
+            get{ return null; }
+            set
+            {
+                CheckDisposedOrStarted();
+                if (value != null)
+                {
+                    throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
+                        SR.net_http_value_not_supported, value, nameof(ServerCertificateCustomValidationCallback)));
+                }
+            }
+        }
+
+        public bool CheckCertificateRevocationList
+        {
+            // We can't get this property to actually work yet since the current WinRT Windows.Web.Http APIs don't have a setting for this.
+            // FYI: The WinRT API always checks for certificate revocation. If the revocation status can't be determined completely, i.e.
+            // the revocation server is offline, then the request is still allowed.
+            get { return true; }
+            set
+            {
+                CheckDisposedOrStarted();
+                if (!value)
+                {
+                    throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
+                        SR.net_http_value_not_supported, value, nameof(CheckCertificateRevocationList)));
+                }
+            }
+        }
+
+        public SslProtocols SslProtocols
+        {
+            get { return SslProtocols.None; }
+            set
+            {
+                CheckDisposedOrStarted();
+                if (value != SslProtocols.None)
+                {
+                    throw new PlatformNotSupportedException(String.Format(CultureInfo.InvariantCulture,
+                        SR.net_http_value_not_supported, value, nameof(SslProtocols)));
+                }
+            }
+        }
+
+        public IDictionary<String, Object> Properties
+        {
+            get
+            {
+                if (properties == null)
+                {
+                    properties = new Dictionary<String, object>();
+                }
+
+                return properties;
             }
         }
 
@@ -301,7 +441,7 @@ namespace System.Net.Http
             
             // The .NET Desktop System.Net Http APIs (based on HttpWebRequest/HttpClient) uses no caching by default.
             // To preserve app-compat, we turn off caching (as much as possible) in the WinRT HttpClient APIs.
-            // TODO: use RTHttpCacheReadBehavior.NoCache when available in the next version of WinRT HttpClient API.
+            // TODO (#7877): use RTHttpCacheReadBehavior.NoCache when available in the next version of WinRT HttpClient API.
             this.rtFilter.CacheControl.ReadBehavior = RTHttpCacheReadBehavior.MostRecent; 
             this.rtFilter.CacheControl.WriteBehavior = RTHttpCacheWriteBehavior.NoCache;
         }
@@ -523,7 +663,7 @@ namespace System.Net.Http
             {
                 if (!string.IsNullOrEmpty(creds.Domain))
                 {
-                    rtCreds.UserName = string.Format(CultureInfo.InvariantCulture, "{0}\\{1}", creds.Domain, creds.UserName);
+                    rtCreds.UserName = creds.Domain + "\\" + creds.UserName;
                 }
                 else
                 {

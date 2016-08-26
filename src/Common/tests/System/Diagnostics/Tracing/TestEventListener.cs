@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace System.Diagnostics.Tracing
 {
@@ -16,10 +17,10 @@ namespace System.Diagnostics.Tracing
         private Action<EventWrittenEventArgs> _eventWritten;
         private List<EventSource> _tmpEventSourceList = new List<EventSource>();
 
-        public TestEventListener(string taretSourceName, EventLevel level)
+        public TestEventListener(string targetSourceName, EventLevel level)
         {
             // Store the arguments
-            _targetSourceName = taretSourceName;
+            _targetSourceName = targetSourceName;
             _level = level;
 
             LoadSourceList();
@@ -91,13 +92,16 @@ namespace System.Diagnostics.Tracing
             finally { _eventWritten = null; }
         }
 
+        public async Task RunWithCallbackAsync(Action<EventWrittenEventArgs> handler, Func<Task> body)
+        {
+            _eventWritten = handler;
+            try { await body().ConfigureAwait(false); }
+            finally { _eventWritten = null; }
+        }
+
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            Action<EventWrittenEventArgs> callback = _eventWritten;
-            if (callback != null)
-            {
-                callback(eventData);
-            }
+            _eventWritten?.Invoke(eventData);
         }
     }
 

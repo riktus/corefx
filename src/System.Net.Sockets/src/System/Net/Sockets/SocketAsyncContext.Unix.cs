@@ -10,17 +10,6 @@ using System.Threading;
 
 namespace System.Net.Sockets
 {
-    // TODO:
-    // - Plumb status through async APIs to avoid callbacks on synchronous completion
-    //     - NOTE: this will require refactoring in the *Async APIs to accommodate the lack
-    //             of completion posting
-    // - Add support for unregistering + reregistering for events
-    //     - This will require a new state for each queue, unregistred, to track whether or
-    //       not the queue is currently registered to receive events
-    // - Audit Close()-related code for the possibility of file descriptor recycling issues
-    //     - It might make sense to change _closeLock to a ReaderWriterLockSlim that is
-    //       acquired for read by all public methods before attempting a completion and
-    //       acquired for write by Close() and HandlEvents()
     //
     // NOTE: the publicly-exposed asynchronous methods should match the behavior of
     //       Winsock overlapped sockets as closely as possible. Especially important are
@@ -41,6 +30,7 @@ namespace System.Net.Sockets
     //       case). The publicly-exposed synchronous methods may also encounter the second
     //       case. In this situation these methods should return SocketError.Interrupted
     //       (which again matches Winsock).
+    //
     internal sealed class SocketAsyncContext
     {
         private abstract class AsyncOperation
@@ -263,23 +253,23 @@ namespace System.Net.Sockets
 
         private sealed class AcceptOperation : AcceptOrConnectOperation
         {
-            public int AcceptedFileDescriptor;
+            public IntPtr AcceptedFileDescriptor;
 
-            public Action<int, byte[], int, SocketError> Callback
+            public Action<IntPtr, byte[], int, SocketError> Callback
             {
-                private get { return (Action<int, byte[], int, SocketError>)CallbackOrEvent; }
+                private get { return (Action<IntPtr, byte[], int, SocketError>)CallbackOrEvent; }
                 set { CallbackOrEvent = value; }
             }
 
             protected override void Abort()
             {
-                AcceptedFileDescriptor = -1;
+                AcceptedFileDescriptor = (IntPtr)(-1);
             }
 
             protected override bool DoTryComplete(SocketAsyncContext context)
             {
                 bool completed = SocketPal.TryCompleteAccept(context._socket, SocketAddress, ref SocketAddressLen, out AcceptedFileDescriptor, out ErrorCode);
-                Debug.Assert(ErrorCode == SocketError.Success || AcceptedFileDescriptor == -1, $"Unexpected values: ErrorCode={ErrorCode}, AcceptedFileDescriptor={AcceptedFileDescriptor}");
+                Debug.Assert(ErrorCode == SocketError.Success || AcceptedFileDescriptor == (IntPtr)(-1), $"Unexpected values: ErrorCode={ErrorCode}, AcceptedFileDescriptor={AcceptedFileDescriptor}");
                 return completed;
             }
 
@@ -479,8 +469,14 @@ namespace System.Net.Sockets
                 Interop.Error errorCode;
                 if (!_asyncEngineToken.TryRegister(_socket, _registeredEvents, events, out errorCode))
                 {
-                    // TODO: throw an appropriate exception
-                    throw new Exception(string.Format("SocketAsyncContext.Register: {0}", errorCode));
+                    if (errorCode == Interop.Error.ENOMEM || errorCode == Interop.Error.ENOSPC)
+                    {
+                        throw new OutOfMemoryException();
+                    }
+                    else
+                    {
+                        throw new InternalException();                        
+                    }
                 }
 
                 _registeredEvents = events;
@@ -581,7 +577,7 @@ namespace System.Net.Sockets
             return true;
         }
 
-        public SocketError Accept(byte[] socketAddress, ref int socketAddressLen, int timeout, out int acceptedFd)
+        public SocketError Accept(byte[] socketAddress, ref int socketAddressLen, int timeout, out IntPtr acceptedFd)
         {
             Debug.Assert(socketAddress != null, "Expected non-null socketAddress");
             Debug.Assert(socketAddressLen > 0, $"Unexpected socketAddressLen: {socketAddressLen}");
@@ -590,7 +586,7 @@ namespace System.Net.Sockets
             SocketError errorCode;
             if (SocketPal.TryCompleteAccept(_socket, socketAddress, ref socketAddressLen, out acceptedFd, out errorCode))
             {
-                Debug.Assert(errorCode == SocketError.Success || acceptedFd == -1, $"Unexpected values: errorCode={errorCode}, acceptedFd={acceptedFd}");
+                Debug.Assert(errorCode == SocketError.Success || acceptedFd == (IntPtr)(-1), $"Unexpected values: errorCode={errorCode}, acceptedFd={acceptedFd}");
                 return errorCode;
             }
 
@@ -615,7 +611,7 @@ namespace System.Net.Sockets
 
                     if (isStopped)
                     {
-                        acceptedFd = -1;
+                        acceptedFd = (IntPtr)(-1);
                         return SocketError.Interrupted;
                     }
 
@@ -629,7 +625,7 @@ namespace System.Net.Sockets
 
                 if (!operation.Wait(timeout))
                 {
-                    acceptedFd = -1;
+                    acceptedFd = (IntPtr)(-1);
                     return SocketError.TimedOut;
                 }
 
@@ -639,7 +635,7 @@ namespace System.Net.Sockets
             }
         }
 
-        public SocketError AcceptAsync(byte[] socketAddress, int socketAddressLen, Action<int, byte[], int, SocketError> callback)
+        public SocketError AcceptAsync(byte[] socketAddress, int socketAddressLen, Action<IntPtr, byte[], int, SocketError> callback)
         {
             Debug.Assert(socketAddress != null, "Expected non-null socketAddress");
             Debug.Assert(socketAddressLen > 0, $"Unexpected socketAddressLen: {socketAddressLen}");
@@ -647,17 +643,17 @@ namespace System.Net.Sockets
 
             SetNonBlocking();
 
-            int acceptedFd;
+            IntPtr acceptedFd;
             SocketError errorCode;
             if (SocketPal.TryCompleteAccept(_socket, socketAddress, ref socketAddressLen, out acceptedFd, out errorCode))
             {
-                Debug.Assert(errorCode == SocketError.Success || acceptedFd == -1, $"Unexpected values: errorCode={errorCode}, acceptedFd={acceptedFd}");
+                Debug.Assert(errorCode == SocketError.Success || acceptedFd == (IntPtr)(-1), $"Unexpected values: errorCode={errorCode}, acceptedFd={acceptedFd}");
 
                 if (errorCode == SocketError.Success)
                 {
                     ThreadPool.QueueUserWorkItem(args =>
                     {
-                        var tup = (Tuple<Action<int, byte[], int, SocketError>, int, byte[], int>)args;
+                        var tup = (Tuple<Action<IntPtr, byte[], int, SocketError>, IntPtr, byte[], int>)args;
                         tup.Item1(tup.Item2, tup.Item3, tup.Item4, SocketError.Success);
                     }, Tuple.Create(callback, acceptedFd, socketAddress, socketAddressLen));
                 }

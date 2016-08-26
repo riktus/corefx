@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Collections.Generic;
 using Xunit;
 
@@ -35,7 +36,15 @@ namespace System.Globalization.Tests
             new ChineseLunisolarCalendar(),
             new KoreanLunisolarCalendar(),
             new PersianCalendar(),
+#if !net46
+            // desktop has a bug in JapaneseLunisolarCalendar which is fixed in .Net Core.
+            // in case of a new era starts in the middle of a month which means part of the month will belong to one
+            // era and the rest will belong to the new era. When calculating the calendar year number for dates which 
+            // in the rest of the month and exist in the new started era, we should still use the old era info instead 
+            // of the new era info because the rest of the month still belong to the year of last era.
+            // https://github.com/dotnet/coreclr/pull/3662
             new JapaneseLunisolarCalendar(),
+#endif // net46             
             new UmAlQuraCalendar()
         };
 
@@ -126,7 +135,7 @@ namespace System.Globalization.Tests
                     }
                 }
                 // Year is invalid
-                yield return new object[] { calendar, MinCalendarYearInEra(calendar, MinEra(calendar)) - 1,month, day, MinEra(calendar), "year" };
+                yield return new object[] { calendar, MinCalendarYearInEra(calendar, MinEra(calendar)) - 1, month, day, MinEra(calendar), "year" };
 
                 // Era is invalid
                 yield return new object[] { calendar, calendar.GetYear(calendar.MaxSupportedDateTime), month, day, MinEra(calendar) - 2, "era" };
@@ -348,12 +357,12 @@ namespace System.Globalization.Tests
         public static void ToFourDigitYear_Invalid(Calendar calendar)
         {
             Assert.Throws<ArgumentOutOfRangeException>("year", () => calendar.ToFourDigitYear(-1));
-            // JapaneseCalandar allows any inputs below the max year
-            if (!(calendar is JapaneseCalendar))
-            {
-                //Assert.Throws<ArgumentOutOfRangeException>("year", () => calendar.ToFourDigitYear(MinDateTimeInEra(calendar, MinEra(calendar)) - 2));
-            }
             Assert.Throws<ArgumentOutOfRangeException>("year", () => calendar.ToFourDigitYear(MaxCalendarYearInEra(calendar, MaxEra(calendar)) + 1));
+            
+            if (!(calendar is JapaneseLunisolarCalendar))
+            {
+                Assert.Throws<ArgumentOutOfRangeException>("year", () => calendar.ToFourDigitYear(MinCalendarYearInEra(calendar, MinEra(calendar)) - 2));
+            }
         }
 
         [Theory]
@@ -369,8 +378,15 @@ namespace System.Globalization.Tests
         [MemberData(nameof(DateTime_TestData))]
         public static void GetEra_Invalid(Calendar calendar, DateTime dt)
         {
-            // TODO: This fails for HebrewCalendar, TaiwanLunisolarCalendar and JapaneseLunisolarCalendar
-            // Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetEra(dt));
+        	// JapaneseCalendar throws on Unix (ICU), but not on Windows
+            if ((calendar is JapaneseCalendar && PlatformDetection.IsWindows) || calendar is HebrewCalendar || calendar is TaiwanLunisolarCalendar || calendar is JapaneseLunisolarCalendar)
+            {
+                calendar.GetEra(dt);
+            }
+            else
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetEra(dt));
+            }
         }
 
         [Theory]
@@ -405,10 +421,14 @@ namespace System.Globalization.Tests
         [MemberData(nameof(DateTime_TestData))]
         public static void GetDayOfWeek_Invalid(Calendar calendar, DateTime dt)
         {
-            // TODO: this fails (expected) for lunar and lunarsolar calendars.
-            // Calendar.AlgorithmType is not exposed in corefx so how do we test for this?
-            // HijiriCalendar, UmAlQuraCalendar, PersianCalendar, HebrewCalendar
-            // Assert.Throws<ArgumentOutOfRangeException>("time", () => calendar.GetDayOfWeek(dt));
+            if (calendar is HijriCalendar || calendar is UmAlQuraCalendar || calendar is PersianCalendar || calendar is HebrewCalendar)
+            {
+                calendar.GetDayOfWeek(dt);
+            }
+            else
+            {
+                Assert.Throws<ArgumentOutOfRangeException>("time", () => calendar.GetDayOfWeek(dt));
+            }
         }
     }
 }

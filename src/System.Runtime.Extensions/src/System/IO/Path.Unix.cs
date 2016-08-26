@@ -21,14 +21,6 @@ namespace System.IO
         private static readonly int MaxPath = Interop.Sys.MaxPath;
         private static readonly int MaxLongPath = MaxPath;
 
-        private static bool IsDirectoryOrVolumeSeparator(char c)
-        {
-            // The directory separator is the same as the volume separator,
-            // so we only need to check one.
-            Debug.Assert(DirectorySeparatorChar == VolumeSeparatorChar);
-            return PathInternal.IsDirectorySeparator(c);
-        }
-
         // Expands the given path to a fully qualified path. 
         public static string GetFullPath(string path)
         {
@@ -178,7 +170,7 @@ namespace System.IO
                 path + DirectorySeparatorChar;
         }
 
-        private static string InternalGetTempFileName(bool checkHost)
+        public static string GetTempFileName()
         {
             const string Suffix = ".tmp";
             const int SuffixByteLength = 4;
@@ -212,14 +204,15 @@ namespace System.IO
             return IsPathRooted(path) ? DirectorySeparatorCharAsString : String.Empty;
         }
 
-        private static byte[] CreateCryptoRandomByteArray(int byteLength)
+        private static unsafe void GetCryptoRandomBytes(byte* bytes, int byteCount)
         {
-            var arr = new byte[byteLength];
-            if (!Interop.Crypto.GetRandomBytes(arr, arr.Length))
+            Debug.Assert(bytes != null);
+            Debug.Assert(byteCount >= 0);
+
+            if (!Interop.Crypto.GetRandomBytes(bytes, byteCount))
             {
                 throw new InvalidOperationException(SR.InvalidOperation_Cryptography);
             }
-            return arr;
         }
     }
 }

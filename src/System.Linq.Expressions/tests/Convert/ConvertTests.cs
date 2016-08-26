@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Collections.Generic;
 using Xunit;
 
 namespace System.Linq.Expressions.Tests
@@ -16457,5 +16458,51 @@ namespace System.Linq.Expressions.Tests
         }
 
         #endregion
+
+        private class PerverselyNamedMembers
+        {
+            public readonly uint Field;
+
+            public PerverselyNamedMembers(uint value)
+            {
+                Field = value;
+            }
+
+            public static uint op_Implicit()
+            {
+                return 0x8BADF00D;
+            }
+        }
+
+        [Fact]
+        public static void ExplicitOpImplicit()
+        {
+            Assert.Throws<InvalidOperationException>(() => Expression.Convert(Expression.Constant(new PerverselyNamedMembers(0)), typeof(uint)));
+        }
+
+        [Fact]
+        public static void OpenGenericnType()
+        {
+            Assert.Throws<ArgumentException>("type", () => Expression.Convert(Expression.Constant(null), typeof(List<>)));
+        }
+
+        [Fact]
+        public static void TypeContainingGenericParameters()
+        {
+            Assert.Throws<ArgumentException>("type", () => Expression.Convert(Expression.Constant(null), typeof(List<>.Enumerator)));
+            Assert.Throws<ArgumentException>("type", () => Expression.Convert(Expression.Constant(null), typeof(List<>).MakeGenericType(typeof(List<>))));
+        }
+
+        [Fact]
+        public static void ByRefType()
+        {
+            Assert.Throws<ArgumentException>("type", () => Expression.Convert(Expression.Constant(null), typeof(object).MakeByRefType()));
+        }
+
+        [Fact]
+        public static void PointerType()
+        {
+            Assert.Throws<ArgumentException>("type", () => Expression.Convert(Expression.Constant(null), typeof(int*)));
+        }
     }
 }

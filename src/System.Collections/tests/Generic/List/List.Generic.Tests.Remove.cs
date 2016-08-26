@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using Xunit;
 
@@ -49,6 +48,12 @@ namespace System.Collections.Tests
             int expectedCount = beforeList.Count((value) => EqualsDefaultElement(value));
             int removedCount = list.RemoveAll(EqualsDefaultElement);
             Assert.Equal(expectedCount, removedCount);
+        }
+
+        [Fact]
+        public void RemoveAll_NullMatchPredicate()
+        {
+            Assert.Throws<ArgumentNullException>("match", () => new List<T>().RemoveAll(null));
         }
 
         #endregion

@@ -35,7 +35,7 @@ namespace System.Net.Http.Headers
             get { return _dispositionType; }
             set
             {
-                CheckDispositionTypeFormat(value, "value");
+                CheckDispositionTypeFormat(value, nameof(value));
                 _dispositionType = value;
             }
         }
@@ -157,7 +157,7 @@ namespace System.Net.Http.Headers
 
         public ContentDispositionHeaderValue(string dispositionType)
         {
-            CheckDispositionTypeFormat(dispositionType, "dispositionType");
+            CheckDispositionTypeFormat(dispositionType, nameof(dispositionType));
             _dispositionType = dispositionType;
         }
 
@@ -344,8 +344,7 @@ namespace System.Net.Http.Headers
             else
             {
                 // Must always be quoted.
-                string dateString = string.Format(CultureInfo.InvariantCulture, "\"{0}\"",
-                    HttpRuleParser.DateToString(date.Value));
+                string dateString = "\"" + HttpRuleParser.DateToString(date.Value) + "\"";
                 if (dateParameter != null)
                 {
                     dateParameter.Value = dateString;
@@ -452,7 +451,7 @@ namespace System.Net.Http.Headers
             if (needsQuotes)
             {
                 // Re-add quotes "value".
-                result = string.Format(CultureInfo.InvariantCulture, "\"{0}\"", result);
+                result = "\"" + result + "\"";
             }
             return result;
         }
@@ -486,7 +485,7 @@ namespace System.Net.Http.Headers
         {
             byte[] buffer = Encoding.UTF8.GetBytes(input);
             string encodedName = Convert.ToBase64String(buffer);
-            return string.Format(CultureInfo.InvariantCulture, "=?utf-8?B?{0}?=", encodedName);
+            return "=?utf-8?B?" + encodedName + "?=";
         }
 
         // Attempt to decode MIME encoded strings.
@@ -501,6 +500,7 @@ namespace System.Net.Http.Headers
             {
                 return false;
             }
+            
             string[] parts = processedInput.Split('?');
             // "=, encodingName, encodingType, encodedData, ="
             if (parts.Length != 5 || parts[0] != "\"=" || parts[4] != "=\"" || parts[2].ToLowerInvariant() != "b")
@@ -564,18 +564,27 @@ namespace System.Net.Http.Headers
         private bool TryDecode5987(string input, out string output)
         {
             output = null;
-            string[] parts = input.Split('\'');
-            if (parts.Length != 3)
+            
+            int quoteIndex = input.IndexOf('\'');
+            if (quoteIndex == -1)
             {
                 return false;
             }
+            
+            int lastQuoteIndex = input.LastIndexOf('\'');
+            if (quoteIndex == lastQuoteIndex || input.IndexOf('\'', quoteIndex + 1) != lastQuoteIndex)
+            {
+                return false;
+            }
+            
+            string encodingString = input.Substring(0, quoteIndex);
+            string dataString = input.Substring(lastQuoteIndex + 1, input.Length - (lastQuoteIndex + 1));
 
             StringBuilder decoded = new StringBuilder();
             try
             {
-                Encoding encoding = Encoding.GetEncoding(parts[0]);
+                Encoding encoding = Encoding.GetEncoding(encodingString);
 
-                string dataString = parts[2];
                 byte[] unescapedBytes = new byte[dataString.Length];
                 int unescapedBytesCount = 0;
                 for (int index = 0; index < dataString.Length; index++)

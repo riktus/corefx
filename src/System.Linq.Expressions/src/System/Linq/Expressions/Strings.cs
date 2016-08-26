@@ -111,7 +111,7 @@ namespace System.Linq.Expressions
         }
 
         /// <summary>
-        /// A string like "type must not be ByRef"
+        /// A string like "Type must not be ByRef"
         /// </summary>
         internal static string TypeMustNotBeByRef
         {
@@ -120,6 +120,11 @@ namespace System.Linq.Expressions
                 return SR.TypeMustNotBeByRef;
             }
         }
+
+        /// <summary>
+        /// A string like "Type must not be a pointer type"
+        /// </summary>
+        internal static string TypeMustNotBePointer => SR.TypeMustNotBePointer;
 
         /// <summary>
         /// A string like "Type doesn't have constructor with a given signature"
@@ -146,11 +151,11 @@ namespace System.Linq.Expressions
         /// <summary>
         /// A string like "Property type must match the value type of setter"
         /// </summary>
-        internal static string PropertyTyepMustMatchSetter
+        internal static string PropertyTypeMustMatchSetter
         {
             get
             {
-                return SR.PropertyTyepMustMatchSetter;
+                return SR.PropertyTypeMustMatchSetter;
             }
         }
 
@@ -283,17 +288,6 @@ namespace System.Linq.Expressions
             get
             {
                 return SR.DefaultBodyMustBeSupplied;
-            }
-        }
-
-        /// <summary>
-        /// A string like "MethodBuilder does not have a valid TypeBuilder"
-        /// </summary>
-        internal static string MethodBuilderDoesNotHaveTypeBuilder
-        {
-            get
-            {
-                return SR.MethodBuilderDoesNotHaveTypeBuilder;
             }
         }
 
@@ -740,7 +734,7 @@ namespace System.Linq.Expressions
         }
 
         /// <summary>
-        /// A string like "Lambda type parameter must be derived from System.Delegate"
+        /// A string like "Lambda type parameter must be derived from System.MulticastDelegate"
         /// </summary>
         internal static string LambdaTypeMustBeDerivedFromSystemDelegate
         {
@@ -885,17 +879,6 @@ namespace System.Linq.Expressions
         internal static string TypeMissingDefaultConstructor(object p0)
         {
             return SR.Format(SR.TypeMissingDefaultConstructor, p0);
-        }
-
-        /// <summary>
-        /// A string like "List initializers must contain at least one initializer"
-        /// </summary>
-        internal static string ListInitializerWithZeroMembers
-        {
-            get
-            {
-                return SR.ListInitializerWithZeroMembers;
-            }
         }
 
         /// <summary>
@@ -1126,14 +1109,6 @@ namespace System.Linq.Expressions
         }
 
         /// <summary>
-        /// A string like "Invalid operation: '{0}'"
-        /// </summary>
-        internal static string InvalidOperation(object p0)
-        {
-            return SR.Format(SR.InvalidOperation, p0);
-        }
-
-        /// <summary>
         /// A string like "{0} must be greater than or equal to {1}"
         /// </summary>
         internal static string OutOfRange(object p0, object p1)
@@ -1270,29 +1245,6 @@ namespace System.Linq.Expressions
         {
             return SR.Format(SR.UnknownLiftType, p0);
         }
-
-        /// <summary>
-        /// A string like "Invalid output directory."
-        /// </summary>
-        internal static string InvalidOutputDir
-        {
-            get
-            {
-                return SR.InvalidOutputDir;
-            }
-        }
-
-        /// <summary>
-        /// A string like "Invalid assembly name or file extension."
-        /// </summary>
-        internal static string InvalidAsmNameOrExtension
-        {
-            get
-            {
-                return SR.InvalidAsmNameOrExtension;
-            }
-        }
-
 
         /// <summary>
         /// A string like "Cannot create instance of {0} because it contains generic parameters"

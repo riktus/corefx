@@ -30,8 +30,6 @@ namespace System.Linq.Expressions.Interpreter
     internal sealed class ExceptionHandler
     {
         public readonly Type ExceptionType;
-        public readonly int StartIndex;
-        public readonly int EndIndex;
         public readonly int LabelIndex;
         public readonly int HandlerStartIndex;
         public readonly int HandlerEndIndex;
@@ -39,12 +37,9 @@ namespace System.Linq.Expressions.Interpreter
 
         internal TryCatchFinallyHandler Parent = null;
 
-        public bool IsFault { get { return ExceptionType == null; } }
-
-        internal ExceptionHandler(int start, int end, int labelIndex, int handlerStartIndex, int handlerEndIndex, Type exceptionType, ExceptionFilter filter)
+        internal ExceptionHandler(int labelIndex, int handlerStartIndex, int handlerEndIndex, Type exceptionType, ExceptionFilter filter)
         {
-            StartIndex = start;
-            EndIndex = end;
+            Debug.Assert(exceptionType != null);
             LabelIndex = labelIndex;
             ExceptionType = exceptionType;
             HandlerStartIndex = handlerStartIndex;
@@ -58,62 +53,29 @@ namespace System.Linq.Expressions.Interpreter
             Parent = tryHandler;
         }
 
-        public bool Matches(Type exceptionType)
-        {
-            if (ExceptionType == null || ExceptionType.IsAssignableFrom(exceptionType))
-            {
-                return true;
-            }
-            return false;
-        }
+        public bool Matches(Type exceptionType) => ExceptionType.IsAssignableFrom(exceptionType);
 
-        public bool IsBetterThan(ExceptionHandler other)
-        {
-            if (other == null) return true;
-
-            Debug.Assert(StartIndex == other.StartIndex && EndIndex == other.EndIndex, "we only need to compare handlers for the same try block");
-            return HandlerStartIndex < other.HandlerStartIndex;
-        }
-
-        internal bool IsInsideTryBlock(int index)
-        {
-            return index >= StartIndex && index < EndIndex;
-        }
-
-        internal bool IsInsideCatchBlock(int index)
-        {
-            return index >= HandlerStartIndex && index < HandlerEndIndex;
-        }
-
-        internal bool IsInsideFinallyBlock(int index)
-        {
-            Debug.Assert(Parent != null);
-            return Parent.IsFinallyBlockExist && index >= Parent.FinallyStartIndex && index < Parent.FinallyEndIndex;
-        }
-
-        public override string ToString()
-        {
-            return String.Format(CultureInfo.InvariantCulture, "{0} [{1}-{2}] [{3}->{4}]",
-                (IsFault ? "fault" : "catch(" + ExceptionType.Name + ")"),
-                StartIndex, EndIndex,
-                HandlerStartIndex, HandlerEndIndex
-            );
-        }
+        public override string ToString() =>
+            string.Format(CultureInfo.InvariantCulture, "catch({0}) [{1}->{2}]", ExceptionType.Name, HandlerStartIndex, HandlerEndIndex);
     }
 
     internal sealed class TryCatchFinallyHandler
     {
-        internal readonly int TryStartIndex = Instruction.UnknownInstrIndex;
-        internal readonly int TryEndIndex = Instruction.UnknownInstrIndex;
-        internal readonly int FinallyStartIndex = Instruction.UnknownInstrIndex;
-        internal readonly int FinallyEndIndex = Instruction.UnknownInstrIndex;
-        internal readonly int GotoEndTargetIndex = Instruction.UnknownInstrIndex;
+        internal readonly int TryStartIndex;
+        internal readonly int TryEndIndex;
+        internal readonly int FinallyStartIndex;
+        internal readonly int FinallyEndIndex;
+        internal readonly int GotoEndTargetIndex;
 
         private readonly ExceptionHandler[] _handlers;
 
         internal bool IsFinallyBlockExist
         {
-            get { return (FinallyStartIndex != Instruction.UnknownInstrIndex && FinallyEndIndex != Instruction.UnknownInstrIndex); }
+            get
+            {
+                Debug.Assert((FinallyStartIndex != Instruction.UnknownInstrIndex) == (FinallyEndIndex != Instruction.UnknownInstrIndex));
+                return FinallyStartIndex != Instruction.UnknownInstrIndex;
+            }
         }
 
         internal bool IsCatchBlockExist
@@ -128,15 +90,6 @@ namespace System.Linq.Expressions.Interpreter
             : this(tryStart, tryEnd, gotoEndTargetIndex, Instruction.UnknownInstrIndex, Instruction.UnknownInstrIndex, handlers)
         {
             Debug.Assert(handlers != null, "catch blocks should exist");
-        }
-
-        /// <summary>
-        /// No catch blocks
-        /// </summary>
-        internal TryCatchFinallyHandler(int tryStart, int tryEnd, int gotoEndTargetIndex, int finallyStart, int finallyEnd)
-            : this(tryStart, tryEnd, gotoEndTargetIndex, finallyStart, finallyEnd, null)
-        {
-            Debug.Assert(finallyStart != Instruction.UnknownInstrIndex && finallyEnd != Instruction.UnknownInstrIndex, "finally block should exist");
         }
 
         /// <summary>
@@ -163,6 +116,16 @@ namespace System.Linq.Expressions.Interpreter
 
         internal bool HasHandler(InterpretedFrame frame, ref Exception exception, out ExceptionHandler handler)
         {
+#if DEBUG
+            if (exception is RethrowException)
+            {
+                // Unreachable.
+                // Want to assert that this case isn't hit, but an assertion failure here will be eaten because
+                // we are in an exception filter. Therefore return true here and assert in the catch block.
+                handler = null;
+                return true;
+            }
+#endif
             frame.SaveTraceToException(exception);
 
             if (IsCatchBlockExist)
@@ -213,6 +176,22 @@ namespace System.Linq.Expressions.Interpreter
             }
 
             return false;
+        }
+    }
+
+    internal sealed class TryFaultHandler
+    {
+        internal readonly int TryStartIndex;
+        internal readonly int TryEndIndex;
+        internal readonly int FinallyStartIndex;
+        internal readonly int FinallyEndIndex;
+
+        internal TryFaultHandler(int tryStart, int tryEnd, int finallyStart, int finallyEnd)
+        {
+            TryStartIndex = tryStart;
+            TryEndIndex = tryEnd;
+            FinallyStartIndex = finallyStart;
+            FinallyEndIndex = finallyEnd;
         }
     }
 
@@ -342,7 +321,7 @@ namespace System.Linq.Expressions.Interpreter
             foreach (var p in node.Parameters)
             {
                 var local = _locals.DefineLocal(p, 0);
-                _instructions.EmitInitializeParameter(local.Index, p.Type);
+                _instructions.EmitInitializeParameter(local.Index);
             }
 
             Compile(node.Body);
@@ -604,9 +583,9 @@ namespace System.Linq.Expressions.Interpreter
             }
 
             // indexes, byref args not allowed.
-            foreach (var arg in index.Arguments)
+            for (int i = 0, n = index.ArgumentCount; i < n; i++)
             {
-                Compile(arg);
+                Compile(index.GetArgument(i));
             }
 
             EmitIndexGet(index);
@@ -618,7 +597,7 @@ namespace System.Linq.Expressions.Interpreter
             {
                 _instructions.EmitCall(index.Indexer.GetGetMethod(true));
             }
-            else if (index.Arguments.Count != 1)
+            else if (index.ArgumentCount != 1)
             {
                 _instructions.EmitCall(index.Object.Type.GetMethod("Get", BindingFlags.Public | BindingFlags.Instance));
             }
@@ -639,9 +618,9 @@ namespace System.Linq.Expressions.Interpreter
             }
 
             // indexes, byref args not allowed.
-            foreach (var arg in index.Arguments)
+            for (int i = 0, n = index.ArgumentCount; i < n; i++)
             {
-                Compile(arg);
+                Compile(index.GetArgument(i));
             }
 
             // value:
@@ -657,7 +636,7 @@ namespace System.Linq.Expressions.Interpreter
             {
                 _instructions.EmitCall(index.Indexer.GetSetMethod(true));
             }
-            else if (index.Arguments.Count != 1)
+            else if (index.ArgumentCount != 1)
             {
                 _instructions.EmitCall(index.Object.Type.GetMethod("Set", BindingFlags.Public | BindingFlags.Instance));
             }
@@ -682,15 +661,20 @@ namespace System.Linq.Expressions.Interpreter
                 EmitThisForMethodCall(expr);
             }
 
-            CompileMemberAssignment(asVoid, member.Member, node.Right);
+            CompileMemberAssignment(asVoid, member.Member, node.Right, false);
         }
 
-        private void CompileMemberAssignment(bool asVoid, MemberInfo refMember, Expression value)
+        private void CompileMemberAssignment(bool asVoid, MemberInfo refMember, Expression value, bool forBinding)
         {
             PropertyInfo pi = refMember as PropertyInfo;
             if (pi != null)
             {
                 var method = pi.GetSetMethod(true);
+                if (forBinding && method.IsStatic)
+                {
+                    throw Error.InvalidProgram();
+                }
+
                 EmitThisForMethodCall(value);
 
                 int start = _instructions.Count;
@@ -706,29 +690,36 @@ namespace System.Linq.Expressions.Interpreter
                 {
                     _instructions.EmitCall(method);
                 }
-                return;
             }
             else
             {
                 // other types inherited from MemberInfo (EventInfo\MethodBase\Type) cannot be used in MemberAssignment
                 FieldInfo fi = (FieldInfo)refMember;
-                if (fi != null)
+                Debug.Assert(fi != null);
+                if (fi.IsLiteral)
                 {
-                    EmitThisForMethodCall(value);
+                    throw Error.NotSupported();
+                }
 
-                    int start = _instructions.Count;
-                    if (!asVoid)
-                    {
-                        LocalDefinition local = _locals.DefineLocal(Expression.Parameter(value.Type), start);
-                        _instructions.EmitAssignLocal(local.Index);
-                        _instructions.EmitStoreField(fi);
-                        _instructions.EmitLoadLocal(local.Index);
-                        _locals.UndefineLocal(local, _instructions.Count);
-                    }
-                    else
-                    {
-                        _instructions.EmitStoreField(fi);
-                    }
+                if (forBinding && fi.IsStatic)
+                {
+                    _instructions.UnEmit(); // Undo having pushed the instance to the stack.
+                }
+
+                EmitThisForMethodCall(value);
+
+                int start = _instructions.Count;
+                if (!asVoid)
+                {
+                    LocalDefinition local = _locals.DefineLocal(Expression.Parameter(value.Type), start);
+                    _instructions.EmitAssignLocal(local.Index);
+                    _instructions.EmitStoreField(fi);
+                    _instructions.EmitLoadLocal(local.Index);
+                    _locals.UndefineLocal(local, _instructions.Count);
+                }
+                else
+                {
+                    _instructions.EmitStoreField(fi);
                 }
             }
         }
@@ -763,21 +754,6 @@ namespace System.Linq.Expressions.Interpreter
                 default:
                     throw Error.InvalidLvalue(node.Left.NodeType);
             }
-        }
-
-        private bool EmitLiftedNullCheck(Expression node, BranchLabel makeCall)
-        {
-            Compile(node);
-            if (TypeUtils.IsNullableType(node.Type) || !node.Type.GetTypeInfo().IsValueType)
-            {
-                _instructions.EmitDup();
-                _instructions.EmitLoad(null, typeof(object));
-                _instructions.EmitNotEqual(typeof(object));
-                _instructions.EmitBranch(makeCall);
-                _instructions.EmitPop();
-                return true;
-            }
-            return false;
         }
 
         private static bool IsNullableOrReferenceType(Type t)
@@ -827,7 +803,6 @@ namespace System.Linq.Expressions.Interpreter
                                 goto default;
                             }
 
-                            Type resultType = TypeUtils.GetNullableType(node.Type);
                             BranchLabel testRight = _instructions.MakeLabel();
                             BranchLabel callMethod = _instructions.MakeLabel();
 
@@ -878,7 +853,7 @@ namespace System.Linq.Expressions.Interpreter
                         default:
                             BranchLabel loadDefault = _instructions.MakeLabel();
 
-                            if (!node.Left.Type.GetTypeInfo().IsValueType || TypeUtils.IsNullableType(node.Left.Type))
+                            if (IsNullableOrReferenceType(node.Left.Type))
                             {
                                 _instructions.EmitLoadLocal(leftTemp.Index);
                                 _instructions.EmitLoad(null, typeof(object));
@@ -886,7 +861,7 @@ namespace System.Linq.Expressions.Interpreter
                                 _instructions.EmitBranchTrue(loadDefault);
                             }
 
-                            if (!node.Right.Type.GetTypeInfo().IsValueType || TypeUtils.IsNullableType(node.Right.Type))
+                            if (IsNullableOrReferenceType(node.Right.Type))
                             {
                                 _instructions.EmitLoadLocal(rightTemp.Index);
                                 _instructions.EmitLoad(null, typeof(object));
@@ -1031,7 +1006,7 @@ namespace System.Linq.Expressions.Interpreter
                 case ExpressionType.LessThanOrEqual: _instructions.EmitLessThanOrEqual(left.Type, node.IsLiftedToNull); break;
                 case ExpressionType.GreaterThan: _instructions.EmitGreaterThan(left.Type, node.IsLiftedToNull); break;
                 case ExpressionType.GreaterThanOrEqual: _instructions.EmitGreaterThanOrEqual(left.Type, node.IsLiftedToNull); break;
-                default: throw Assert.Unreachable;
+                default: throw ContractUtils.Unreachable;
             }
         }
 
@@ -1050,7 +1025,7 @@ namespace System.Linq.Expressions.Interpreter
                 case ExpressionType.MultiplyChecked: _instructions.EmitMul(left.Type, true); break;
                 case ExpressionType.Divide: _instructions.EmitDiv(left.Type); break;
                 case ExpressionType.Modulo: _instructions.EmitModulo(left.Type); break;
-                default: throw Assert.Unreachable;
+                default: throw ContractUtils.Unreachable;
             }
         }
 
@@ -1497,7 +1472,6 @@ namespace System.Linq.Expressions.Interpreter
         private void CompileLoopExpression(Expression expr)
         {
             var node = (LoopExpression)expr;
-            var enterLoop = new EnterLoopInstruction(node, _locals, _instructions.Count);
 
             PushLabelBlock(LabelScopeKind.Statement);
             LabelInfo breakLabel = DefineLabel(node.BreakLabel);
@@ -1506,7 +1480,6 @@ namespace System.Linq.Expressions.Interpreter
             _instructions.MarkLabel(continueLabel.GetLabel(this));
 
             // emit loop body:
-            _instructions.Emit(enterLoop);
             CompileAsVoid(node.Body);
 
             // emit loop branch:
@@ -1515,8 +1488,6 @@ namespace System.Linq.Expressions.Interpreter
             _instructions.MarkLabel(breakLabel.GetLabel(this));
 
             PopLabelBlock(LabelScopeKind.Statement);
-
-            enterLoop.FinishLoop(_instructions.Count);
         }
 
         #endregion
@@ -1634,7 +1605,7 @@ namespace System.Linq.Expressions.Interpreter
 
             if (node.DefaultBody != null)
             {
-                Compile(node.DefaultBody);
+                Compile(node.DefaultBody, !hasValue);
             }
             else
             {
@@ -1656,7 +1627,7 @@ namespace System.Linq.Expressions.Interpreter
                     }
                 }
 
-                Compile(switchCase.Body);
+                Compile(switchCase.Body, !hasValue);
 
                 if (i < node.Cases.Count - 1)
                 {
@@ -1681,7 +1652,7 @@ namespace System.Linq.Expressions.Interpreter
 
             if (node.DefaultBody != null)
             {
-                Compile(node.DefaultBody);
+                Compile(node.DefaultBody, !hasValue);
             }
             else
             {
@@ -1710,7 +1681,7 @@ namespace System.Linq.Expressions.Interpreter
                     }
                 }
 
-                Compile(switchCase.Body);
+                Compile(switchCase.Body, !hasValue);
 
                 if (i < node.Cases.Count - 1)
                 {
@@ -1778,11 +1749,6 @@ namespace System.Linq.Expressions.Interpreter
                 node.Type != typeof(void),
                 node.Value != null && node.Value.Type != typeof(void),
                 node.Target.Type != typeof(void));
-        }
-
-        public BranchLabel GetBranchLabel(LabelTarget target)
-        {
-            return ReferenceLabel(target).GetLabel(this);
         }
 
         public void PushLabelBlock(LabelScopeKind type)
@@ -1983,231 +1949,201 @@ namespace System.Linq.Expressions.Interpreter
             }
         }
 
-        private bool EndsWithRethrow(Expression expr)
-        {
-            if (expr.NodeType == ExpressionType.Throw)
-            {
-                var node = (UnaryExpression)expr;
-                return node.Operand == null;
-            }
-
-            BlockExpression block = expr as BlockExpression;
-            if (block != null)
-            {
-                return EndsWithRethrow(block.Expressions[block.Expressions.Count - 1]);
-            }
-            return false;
-        }
-
-
-        private void CompileAsVoidRemoveRethrow(Expression expr)
-        {
-            int stackDepth = _instructions.CurrentStackDepth;
-
-            if (expr.NodeType == ExpressionType.Throw)
-            {
-                Debug.Assert(((UnaryExpression)expr).Operand == null);
-                return;
-            }
-
-            var node = (BlockExpression)expr;
-            var end = CompileBlockStart(node);
-
-            CompileAsVoidRemoveRethrow(node.Expressions[node.Expressions.Count - 1]);
-
-            Debug.Assert(stackDepth == _instructions.CurrentStackDepth);
-
-            CompileBlockEnd(end);
-        }
-
         private void CompileTryExpression(Expression expr)
         {
             var node = (TryExpression)expr;
-
-            BranchLabel end = _instructions.MakeLabel();
-            BranchLabel gotoEnd = _instructions.MakeLabel();
-            int tryStart = _instructions.Count;
-
-            BranchLabel startOfFinally = null;
-            if (node.Finally != null)
+            if (node.Fault != null)
             {
-                startOfFinally = _instructions.MakeLabel();
-                _instructions.EmitEnterTryFinally(startOfFinally);
+                CompileTryFaultExpression(node);
             }
             else
             {
-                _instructions.EmitEnterTryCatch();
-            }
 
-            List<ExceptionHandler> exHandlers = null;
-            var enterTryInstr = _instructions.GetInstruction(tryStart) as EnterTryCatchFinallyInstruction;
-            Debug.Assert(enterTryInstr != null);
+                BranchLabel end = _instructions.MakeLabel();
+                BranchLabel gotoEnd = _instructions.MakeLabel();
+                int tryStart = _instructions.Count;
 
-            PushLabelBlock(LabelScopeKind.Try);
-            bool hasValue = node.Type != typeof(void);
-
-            Compile(node.Body, !hasValue);
-
-            int tryEnd = _instructions.Count;
-
-            // handlers jump here:
-            _instructions.MarkLabel(gotoEnd);
-            _instructions.EmitGoto(end, hasValue, hasValue, hasValue);
-
-            // keep the result on the stack:     
-            if (node.Handlers.Count > 0)
-            {
-                exHandlers = new List<ExceptionHandler>();
-
-                // emulates faults 
-                if (node.Finally == null && node.Handlers.Count == 1)
+                BranchLabel startOfFinally = null;
+                if (node.Finally != null)
                 {
-                    var handler = node.Handlers[0];
-                    if (handler.Filter == null && handler.Test == typeof(Exception) && handler.Variable == null)
+                    startOfFinally = _instructions.MakeLabel();
+                    _instructions.EmitEnterTryFinally(startOfFinally);
+                }
+                else
+                {
+                    _instructions.EmitEnterTryCatch();
+                }
+
+                List<ExceptionHandler> exHandlers = null;
+                var enterTryInstr = _instructions.GetInstruction(tryStart) as EnterTryCatchFinallyInstruction;
+                Debug.Assert(enterTryInstr != null);
+
+                PushLabelBlock(LabelScopeKind.Try);
+                bool hasValue = node.Type != typeof(void);
+
+                Compile(node.Body, !hasValue);
+
+                int tryEnd = _instructions.Count;
+
+                // handlers jump here:
+                _instructions.MarkLabel(gotoEnd);
+                _instructions.EmitGoto(end, hasValue, hasValue, hasValue);
+
+                // keep the result on the stack:     
+                if (node.Handlers.Count > 0)
+                {
+                    exHandlers = new List<ExceptionHandler>();
+                    foreach (var handler in node.Handlers)
                     {
-                        if (EndsWithRethrow(handler.Body))
+                        var parameter = handler.Variable ?? Expression.Parameter(handler.Test);
+
+                        var local = _locals.DefineLocal(parameter, _instructions.Count);
+                        _exceptionForRethrowStack.Push(parameter);
+
+                        ExceptionFilter filter = null;
+
+                        if (handler.Filter != null)
                         {
-                            if (hasValue)
-                            {
-                                _instructions.EmitEnterExceptionHandlerNonVoid();
-                            }
-                            else
-                            {
-                                _instructions.EmitEnterExceptionHandlerVoid();
-                            }
+                            PushLabelBlock(LabelScopeKind.Filter);
+
+                            _instructions.EmitEnterExceptionFilter();
 
                             // at this point the stack balance is prepared for the hidden exception variable:
-                            int handlerLabel = _instructions.MarkRuntimeLabel();
-                            int handlerStart = _instructions.Count;
+                            int filterLabel = _instructions.MarkRuntimeLabel();
+                            int filterStart = _instructions.Count;
 
-                            CompileAsVoidRemoveRethrow(handler.Body);
-                            _instructions.EmitLeaveFault(hasValue);
-                            _instructions.MarkLabel(end);
+                            CompileSetVariable(parameter, true);
+                            Compile(handler.Filter);
 
-                            exHandlers.Add(new ExceptionHandler(tryStart, tryEnd, handlerLabel, handlerStart, _instructions.Count, null, null));
-                            enterTryInstr.SetTryHandler(new TryCatchFinallyHandler(tryStart, tryEnd, gotoEnd.TargetIndex, exHandlers.ToArray()));
-                            PopLabelBlock(LabelScopeKind.Try);
-                            return;
+                            filter = new ExceptionFilter(filterLabel, filterStart, _instructions.Count);
+
+                            // keep the value of the body on the stack:
+                            _instructions.EmitLeaveExceptionFilter();
+
+                            PopLabelBlock(LabelScopeKind.Filter);
                         }
-                    }
-                }
 
-                foreach (var handler in node.Handlers)
-                {
-                    var parameter = handler.Variable ?? Expression.Parameter(handler.Test);
+                        PushLabelBlock(LabelScopeKind.Catch);
 
-                    var local = _locals.DefineLocal(parameter, _instructions.Count);
-                    _exceptionForRethrowStack.Push(parameter);
-
-                    ExceptionFilter filter = null;
-
-                    if (handler.Filter != null)
-                    {
-                        PushLabelBlock(LabelScopeKind.Filter);
-
-                        _instructions.EmitEnterExceptionFilter();
+                        // add a stack balancing nop instruction (exception handling pushes the current exception):
+                        if (hasValue)
+                        {
+                            _instructions.EmitEnterExceptionHandlerNonVoid();
+                        }
+                        else
+                        {
+                            _instructions.EmitEnterExceptionHandlerVoid();
+                        }
 
                         // at this point the stack balance is prepared for the hidden exception variable:
-                        int filterLabel = _instructions.MarkRuntimeLabel();
-                        int filterStart = _instructions.Count;
+                        int handlerLabel = _instructions.MarkRuntimeLabel();
+                        int handlerStart = _instructions.Count;
 
                         CompileSetVariable(parameter, true);
-                        Compile(handler.Filter);
+                        Compile(handler.Body, !hasValue);
 
-                        filter = new ExceptionFilter(filterLabel, filterStart, _instructions.Count);
+                        _exceptionForRethrowStack.Pop();
 
                         // keep the value of the body on the stack:
-                        _instructions.EmitLeaveExceptionFilter();
+                        _instructions.EmitLeaveExceptionHandler(hasValue, gotoEnd);
 
-                        PopLabelBlock(LabelScopeKind.Filter);
+                        exHandlers.Add(new ExceptionHandler(handlerLabel, handlerStart, _instructions.Count, handler.Test, filter));
+                        PopLabelBlock(LabelScopeKind.Catch);
+
+                        _locals.UndefineLocal(local, _instructions.Count);
                     }
-
-                    PushLabelBlock(LabelScopeKind.Catch);
-
-                    // add a stack balancing nop instruction (exception handling pushes the current exception):
-                    if (hasValue)
-                    {
-                        _instructions.EmitEnterExceptionHandlerNonVoid();
-                    }
-                    else
-                    {
-                        _instructions.EmitEnterExceptionHandlerVoid();
-                    }
-
-                    // at this point the stack balance is prepared for the hidden exception variable:
-                    int handlerLabel = _instructions.MarkRuntimeLabel();
-                    int handlerStart = _instructions.Count;
-
-                    CompileSetVariable(parameter, true);
-                    Compile(handler.Body, !hasValue);
-
-                    _exceptionForRethrowStack.Pop();
-
-                    // keep the value of the body on the stack:
-                    _instructions.EmitLeaveExceptionHandler(hasValue, gotoEnd);
-
-                    exHandlers.Add(new ExceptionHandler(tryStart, tryEnd, handlerLabel, handlerStart, _instructions.Count, handler.Test, filter));
-                    PopLabelBlock(LabelScopeKind.Catch);
-
-                    _locals.UndefineLocal(local, _instructions.Count);
                 }
 
-                if (node.Fault != null)
+                if (node.Finally != null)
                 {
-                    throw new PlatformNotSupportedException(SR.FaultBlockNotSupported);
+                    Debug.Assert(startOfFinally != null);
+                    PushLabelBlock(LabelScopeKind.Finally);
+
+                    _instructions.MarkLabel(startOfFinally);
+                    _instructions.EmitEnterFinally(startOfFinally);
+                    CompileAsVoid(node.Finally);
+                    _instructions.EmitLeaveFinally();
+
+                    enterTryInstr.SetTryHandler(
+                        new TryCatchFinallyHandler(tryStart, tryEnd, gotoEnd.TargetIndex,
+                            startOfFinally.TargetIndex, _instructions.Count,
+                            exHandlers != null ? exHandlers.ToArray() : null));
+                    PopLabelBlock(LabelScopeKind.Finally);
                 }
+                else
+                {
+                    Debug.Assert(exHandlers != null);
+                    enterTryInstr.SetTryHandler(
+                        new TryCatchFinallyHandler(tryStart, tryEnd, gotoEnd.TargetIndex, exHandlers.ToArray()));
+                }
+
+                _instructions.MarkLabel(end);
+
+                PopLabelBlock(LabelScopeKind.Try);
             }
+        }
 
-            if (node.Finally != null)
-            {
-                Debug.Assert(startOfFinally != null);
-                PushLabelBlock(LabelScopeKind.Finally);
+        private void CompileTryFaultExpression(TryExpression expr)
+        {
+            Debug.Assert(expr.Finally == null);
+            Debug.Assert(expr.Handlers.Count == 0);
 
-                _instructions.MarkLabel(startOfFinally);
-                _instructions.EmitEnterFinally(startOfFinally);
-                CompileAsVoid(node.Finally);
-                _instructions.EmitLeaveFinally();
+            // Mark where we begin.
+            int tryStart = _instructions.Count;
+            BranchLabel end = _instructions.MakeLabel();
+            var enterTryInstr = _instructions.EmitEnterTryFault(end);
+            Debug.Assert(enterTryInstr == _instructions.GetInstruction(tryStart));
+            
+            // Emit the try block.
+            PushLabelBlock(LabelScopeKind.Try);
+            bool hasValue = expr.Type != typeof(void);
+            Compile(expr.Body, !hasValue);
+            int tryEnd = _instructions.Count;
 
-                enterTryInstr.SetTryHandler(
-                    new TryCatchFinallyHandler(tryStart, tryEnd, gotoEnd.TargetIndex,
-                        startOfFinally.TargetIndex, _instructions.Count,
-                        exHandlers != null ? exHandlers.ToArray() : null));
-                PopLabelBlock(LabelScopeKind.Finally);
-            }
-            else
-            {
-                Debug.Assert(exHandlers != null);
-                enterTryInstr.SetTryHandler(
-                    new TryCatchFinallyHandler(tryStart, tryEnd, gotoEnd.TargetIndex, exHandlers.ToArray()));
-            }
+            // Jump out of the try block to the end of the finally. If we got
+            // This far, then the fault block shouldn't be run.
+            _instructions.EmitGoto(end, hasValue, hasValue, hasValue);
 
-            _instructions.MarkLabel(end);
-
+            // Emit the fault block. The scope kind used is the same as for finally
+            // blocks, which matches the Compiler.LambdaCompiler.EmitTryExpression approach.
+            PushLabelBlock(LabelScopeKind.Finally);
+            BranchLabel startOfFault = _instructions.MakeLabel();
+            _instructions.MarkLabel(startOfFault);
+            _instructions.EmitEnterFault(startOfFault);
+            CompileAsVoid(expr.Fault);
+            _instructions.EmitLeaveFault();
+            enterTryInstr.SetTryHandler(new TryFaultHandler(tryStart, tryEnd, startOfFault.TargetIndex, _instructions.Count));
+            PopLabelBlock(LabelScopeKind.Finally);
             PopLabelBlock(LabelScopeKind.Try);
+            _instructions.MarkLabel(end);
         }
 
         private void CompileMethodCallExpression(Expression expr)
         {
             var node = (MethodCallExpression)expr;
+            CompileMethodCallExpression(node.Object, node.Method, node);
+        }
 
-            var parameters = node.Method.GetParameters();
+        private void CompileMethodCallExpression(Expression @object, MethodInfo method, IArgumentProvider arguments)
+        {
+            var parameters = method.GetParameters();
 
             // TODO: Support pass by reference.
             List<ByRefUpdater> updaters = null;
-            if (!node.Method.IsStatic)
+            if (!method.IsStatic)
             {
-                var updater = CompileAddress(node.Object, -1);
+                var updater = CompileAddress(@object, -1);
                 if (updater != null)
                 {
                     updaters = new List<ByRefUpdater>() { updater };
                 }
             }
 
-            Debug.Assert(parameters.Length == node.Arguments.Count);
+            Debug.Assert(parameters.Length == arguments.ArgumentCount);
 
-            for (int i = 0; i < node.Arguments.Count; i++)
+            for (int i = 0, n = arguments.ArgumentCount; i < n; i++)
             {
-                var arg = node.Arguments[i];
+                var arg = arguments.GetArgument(i);
 
                 // byref calls leave out values on the stack, we use a callback
                 // to emit the code which processes each value left on the stack.
@@ -2230,22 +2166,22 @@ namespace System.Linq.Expressions.Interpreter
                 }
             }
 
-            if (!node.Method.IsStatic &&
-                node.Object.Type.IsNullableType())
+            if (!method.IsStatic &&
+                @object.Type.IsNullableType())
             {
                 // reflection doesn't let us call methods on Nullable<T> when the value
                 // is null...  so we get to special case those methods!
-                _instructions.EmitNullableCall(node.Method, parameters);
+                _instructions.EmitNullableCall(method, parameters);
             }
             else
             {
                 if (updaters == null)
                 {
-                    _instructions.EmitCall(node.Method, parameters);
+                    _instructions.EmitCall(method, parameters);
                 }
                 else
                 {
-                    _instructions.EmitByRefCall(node.Method, parameters, updaters.ToArray());
+                    _instructions.EmitByRefCall(method, parameters, updaters.ToArray());
 
                     foreach (var updater in updaters)
                     {
@@ -2325,18 +2261,19 @@ namespace System.Linq.Expressions.Interpreter
                             LocalDefinition? objTmp = null;
                             if (indexNode.Object != null)
                             {
-                                Compile(indexNode.Object);
                                 objTmp = _locals.DefineLocal(Expression.Parameter(indexNode.Object.Type), _instructions.Count);
+                                EmitThisForMethodCall(indexNode.Object);
                                 _instructions.EmitDup();
                                 _instructions.EmitStoreLocal(objTmp.Value.Index);
                             }
 
                             List<LocalDefinition> indexLocals = new List<LocalDefinition>();
-                            for (int i = 0; i < indexNode.Arguments.Count; i++)
+                            for (int i = 0; i < indexNode.ArgumentCount; i++)
                             {
-                                Compile(indexNode.Arguments[i]);
+                                var arg = indexNode.GetArgument(i);
+                                Compile(arg);
 
-                                var argTmp = _locals.DefineLocal(Expression.Parameter(indexNode.Arguments[i].Type), _instructions.Count);
+                                var argTmp = _locals.DefineLocal(Expression.Parameter(arg.Type), _instructions.Count);
                                 _instructions.EmitDup();
                                 _instructions.EmitStoreLocal(argTmp.Index);
 
@@ -2347,13 +2284,13 @@ namespace System.Linq.Expressions.Interpreter
 
                             return new IndexMethodByRefUpdater(objTmp, indexLocals.ToArray(), indexNode.Indexer.GetSetMethod(), index);
                         }
-                        else if (indexNode.Arguments.Count == 1)
+                        else if (indexNode.ArgumentCount == 1)
                         {
-                            return CompileArrayIndexAddress(indexNode.Object, indexNode.Arguments[0], index);
+                            return CompileArrayIndexAddress(indexNode.Object, indexNode.GetArgument(0), index);
                         }
                         else
                         {
-                            return CompileMultiDimArrayAccess(indexNode.Object, indexNode.Arguments, index);
+                            return CompileMultiDimArrayAccess(indexNode.Object, indexNode, index);
                         }
                     case ExpressionType.MemberAccess:
                         var member = (MemberExpression)node;
@@ -2398,7 +2335,7 @@ namespace System.Linq.Expressions.Interpreter
                         {
                             return CompileMultiDimArrayAccess(
                                 call.Object,
-                                call.Arguments,
+                                call,
                                 index
                             );
                         }
@@ -2410,7 +2347,7 @@ namespace System.Linq.Expressions.Interpreter
             return null;
         }
 
-        private ByRefUpdater CompileMultiDimArrayAccess(Expression array, IList<Expression> arguments, int index)
+        private ByRefUpdater CompileMultiDimArrayAccess(Expression array, IArgumentProvider arguments, int index)
         {
             Compile(array);
             LocalDefinition objTmp = _locals.DefineLocal(Expression.Parameter(array.Type), _instructions.Count);
@@ -2418,11 +2355,12 @@ namespace System.Linq.Expressions.Interpreter
             _instructions.EmitStoreLocal(objTmp.Index);
 
             List<LocalDefinition> indexLocals = new List<LocalDefinition>();
-            for (int i = 0; i < arguments.Count; i++)
+            for (int i = 0; i < arguments.ArgumentCount; i++)
             {
-                Compile(arguments[i]);
+                var arg = arguments.GetArgument(i);
+                Compile(arg);
 
-                var argTmp = _locals.DefineLocal(Expression.Parameter(arguments[i].Type), _instructions.Count);
+                var argTmp = _locals.DefineLocal(Expression.Parameter(arg.Type), _instructions.Count);
                 _instructions.EmitDup();
                 _instructions.EmitStoreLocal(argTmp.Index);
 
@@ -2448,9 +2386,11 @@ namespace System.Linq.Expressions.Interpreter
 
                 for (int i = 0; i < parameters.Length; i++)
                 {
+                    var arg = node.GetArgument(i);
+
                     if (parameters[i].ParameterType.IsByRef)
                     {
-                        var updater = CompileAddress(node.Arguments[i], i);
+                        var updater = CompileAddress(arg, i);
                         if (updater != null)
                         {
                             if (updaters == null)
@@ -2462,17 +2402,17 @@ namespace System.Linq.Expressions.Interpreter
                     }
                     else
                     {
-                        Compile(node.Arguments[i]);
+                        Compile(arg);
                     }
                 }
 
                 if (updaters != null)
                 {
-                    _instructions.EmitByRefNew(node.Constructor, updaters.ToArray());
+                    _instructions.EmitByRefNew(node.Constructor, parameters, updaters.ToArray());
                 }
                 else
                 {
-                    _instructions.EmitNew(node.Constructor);
+                    _instructions.EmitNew(node.Constructor, parameters);
                 }
             }
             else
@@ -2486,20 +2426,26 @@ namespace System.Linq.Expressions.Interpreter
         {
             var node = (MemberExpression)expr;
 
-            CompileMember(node.Expression, node.Member);
+            CompileMember(node.Expression, node.Member, false);
         }
 
-        private void CompileMember(Expression from, MemberInfo member)
+        private void CompileMember(Expression from, MemberInfo member, bool forBinding)
         {
             FieldInfo fi = member as FieldInfo;
             if (fi != null)
             {
                 if (fi.IsLiteral)
                 {
+                    Debug.Assert(!forBinding);
                     _instructions.EmitLoad(fi.GetValue(null), fi.FieldType);
                 }
                 else if (fi.IsStatic)
                 {
+                    if (forBinding)
+                    {
+                        throw Error.InvalidProgram();
+                    }
+
                     if (fi.IsInitOnly)
                     {
                         _instructions.EmitLoad(fi.GetValue(null), fi.FieldType);
@@ -2515,6 +2461,7 @@ namespace System.Linq.Expressions.Interpreter
                     {
                         EmitThisForMethodCall(from);
                     }
+
                     _instructions.EmitLoadField(fi);
                 }
             }
@@ -2525,6 +2472,11 @@ namespace System.Linq.Expressions.Interpreter
                 if (pi != null)
                 {
                     var method = pi.GetGetMethod(true);
+                    if (forBinding && method.IsStatic)
+                    {
+                        throw Error.InvalidProgram();
+                    }
+
                     if (from != null)
                     {
                         EmitThisForMethodCall(from);
@@ -2574,26 +2526,6 @@ namespace System.Linq.Expressions.Interpreter
                 }
             }
         }
-
-        private void CompileExtensionExpression(Expression expr)
-        {
-            var instructionProvider = expr as IInstructionProvider;
-            if (instructionProvider != null)
-            {
-                instructionProvider.AddInstructions(this);
-                return;
-            }
-
-            if (expr.CanReduce)
-            {
-                Compile(expr.Reduce());
-            }
-            else
-            {
-                throw new PlatformNotSupportedException(SR.NonReducibleExpressionExtensionsNotSupported);
-            }
-        }
-
 
         private void CompileDebugInfoExpression(Expression expr)
         {
@@ -2687,19 +2619,17 @@ namespace System.Linq.Expressions.Interpreter
                 var compMethod = node.Expression.Type.GetMethod("Compile", Array.Empty<Type>());
                 CompileMethodCallExpression(
                     Expression.Call(
-                        Expression.Call(
-                            node.Expression,
-                            compMethod
-                        ),
-                        compMethod.ReturnType.GetMethod("Invoke"),
-                        node.Arguments
-                    )
+                        node.Expression,
+                        compMethod
+                    ),
+                    compMethod.ReturnType.GetMethod("Invoke"),
+                    node
                 );
             }
             else
             {
                 CompileMethodCallExpression(
-                    Expression.Call(node.Expression, node.Expression.Type.GetMethod("Invoke"), node.Arguments)
+                    node.Expression, node.Expression.Type.GetMethod("Invoke"), node
                 );
             }
         }
@@ -2748,13 +2678,14 @@ namespace System.Linq.Expressions.Interpreter
                         CompileMemberAssignment(
                             true,
                             ((MemberAssignment)binding).Member,
-                            ((MemberAssignment)binding).Expression
+                            ((MemberAssignment)binding).Expression,
+                            true
                         );
                         break;
                     case MemberBindingType.ListBinding:
                         var memberList = (MemberListBinding)binding;
                         _instructions.EmitDup();
-                        CompileMember(null, memberList.Member);
+                        CompileMember(null, memberList.Member, true);
                         CompileListInit(memberList.Initializers);
                         _instructions.EmitPop();
                         break;
@@ -2767,7 +2698,7 @@ namespace System.Linq.Expressions.Interpreter
                             throw Error.CannotAutoInitializeValueTypeMemberThroughProperty(memberMember.Bindings);
                         }
 
-                        CompileMember(null, memberMember.Member);
+                        CompileMember(null, memberMember.Member, true);
                         CompileMemberInit(memberMember.Bindings);
                         _instructions.EmitPop();
                         break;
@@ -3072,7 +3003,6 @@ namespace System.Linq.Expressions.Interpreter
                 case ExpressionType.DebugInfo: CompileDebugInfoExpression(expr); break;
                 case ExpressionType.Decrement: CompileUnaryExpression(expr); break;
                 case ExpressionType.Default: CompileDefaultExpression(expr); break;
-                case ExpressionType.Extension: CompileExtensionExpression(expr); break;
                 case ExpressionType.Goto: CompileGotoExpression(expr); break;
                 case ExpressionType.Increment: CompileUnaryExpression(expr); break;
                 case ExpressionType.Index: CompileIndexExpression(expr); break;
@@ -3087,32 +3017,10 @@ namespace System.Linq.Expressions.Interpreter
                 case ExpressionType.OnesComplement: CompileUnaryExpression(expr); break;
                 case ExpressionType.IsTrue: CompileUnaryExpression(expr); break;
                 case ExpressionType.IsFalse: CompileUnaryExpression(expr); break;
-                case ExpressionType.AddAssign:
-                case ExpressionType.AndAssign:
-                case ExpressionType.DivideAssign:
-                case ExpressionType.ExclusiveOrAssign:
-                case ExpressionType.LeftShiftAssign:
-                case ExpressionType.ModuloAssign:
-                case ExpressionType.MultiplyAssign:
-                case ExpressionType.OrAssign:
-                case ExpressionType.PowerAssign:
-                case ExpressionType.RightShiftAssign:
-                case ExpressionType.SubtractAssign:
-                case ExpressionType.AddAssignChecked:
-                case ExpressionType.MultiplyAssignChecked:
-                case ExpressionType.SubtractAssignChecked:
-                case ExpressionType.PreIncrementAssign:
-                case ExpressionType.PreDecrementAssign:
-                case ExpressionType.PostIncrementAssign:
-                case ExpressionType.PostDecrementAssign:
                 default:
-                    if (expr.CanReduce)
-                    {
-                        Compile(expr.Reduce());
-                        break;
-                    }
-                    throw new PlatformNotSupportedException(SR.Format(SR.UnsupportedExpressionType, expr.NodeType));
-            };
+                    Compile(expr.ReduceAndCheck());
+                    break;
+            }
             Debug.Assert(_instructions.CurrentStackDepth == startingStackDepth + (expr.Type == typeof(void) ? 0 : 1),
                 String.Format("{0} vs {1} for {2}", _instructions.CurrentStackDepth, startingStackDepth + (expr.Type == typeof(void) ? 0 : 1), expr.NodeType));
         }

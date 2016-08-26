@@ -6,55 +6,86 @@ namespace System.Globalization
 {
     sealed partial class IdnMapping
     {
-        private string GetAsciiCore(string unicode)
+        private unsafe string GetAsciiCore(char* unicode, int count)
         {
             uint flags = Flags;
-            CheckInvalidIdnCharacters(unicode, flags, "unicode");
+            CheckInvalidIdnCharacters(unicode, count, flags, nameof(unicode));
 
-            char[] buf = new char[unicode.Length];
-
-            for (int attempts = 2; attempts > 0; attempts--)
+            const int StackallocThreshold = 512;
+            // Each unicode character is represented by up to 3 ASCII chars
+            // and the whole string is prefixed by "xn--" (length 4)
+            int estimatedLength = (int)Math.Min(count * 3L + 4, StackallocThreshold);
+            int actualLength;
+            if (estimatedLength < StackallocThreshold)
             {
-                int realLen = Interop.GlobalizationNative.ToAscii(flags, unicode, unicode.Length, buf, buf.Length);
-
-                if (realLen == 0)
+                char* outputStack = stackalloc char[estimatedLength];
+                actualLength = Interop.GlobalizationNative.ToAscii(flags, unicode, count, outputStack, estimatedLength);
+                if (actualLength > 0 && actualLength <= estimatedLength)
                 {
-                    break;
+                    return new string(outputStack, 0, actualLength);
                 }
-
-                if (realLen <= buf.Length)
-                {
-                    return new string(buf, 0, realLen);
-                }
-
-                buf = new char[realLen];
+            }
+            else
+            {
+                actualLength = Interop.GlobalizationNative.ToAscii(flags, unicode, count, null, 0);
+            }
+            if (actualLength == 0)
+            {
+                throw new ArgumentException(SR.Argument_IdnIllegalName, nameof(unicode));
             }
 
-            throw new ArgumentException(SR.Argument_IdnIllegalName, nameof(unicode));
+            char[] outputHeap = new char[actualLength];
+            fixed (char* pOutputHeap = outputHeap)
+            {
+                actualLength = Interop.GlobalizationNative.ToAscii(flags, unicode, count, pOutputHeap, actualLength);
+                if (actualLength == 0 || actualLength > outputHeap.Length)
+                {
+                    throw new ArgumentException(SR.Argument_IdnIllegalName, nameof(unicode));
+                }
+                return new string(pOutputHeap, 0, actualLength);
+            }
         }
 
-        private string GetUnicodeCore(string ascii)
+        private unsafe string GetUnicodeCore(char* ascii, int count)
         {
             uint flags = Flags;
-            CheckInvalidIdnCharacters(ascii, flags, "ascii");
+            CheckInvalidIdnCharacters(ascii, count, flags, nameof(ascii));
 
-            char[] buf = new char[ascii.Length];
-
-            for (int attempts = 2; attempts > 0; attempts--)
+            const int StackAllocThreshold = 512;
+            if (count < StackAllocThreshold)
             {
-                int realLen = Interop.GlobalizationNative.ToUnicode(flags, ascii, ascii.Length, buf, buf.Length);
-
-                if (realLen == 0)
+                char* output = stackalloc char[count];
+                return GetUnicodeCore(ascii, count, flags, output, count, reattempt: true);
+            }
+            else
+            {
+                char[] output = new char[count];
+                fixed (char* pOutput = output)
                 {
-                    break;
+                    return GetUnicodeCore(ascii, count, flags, pOutput, count, reattempt: true);
                 }
+            }
+        }
 
-                if (realLen <= buf.Length)
+        private unsafe string GetUnicodeCore(char* ascii, int count, uint flags, char* output, int outputLength, bool reattempt)
+        {
+            int realLen = Interop.GlobalizationNative.ToUnicode(flags, ascii, count, output, outputLength);
+
+            if (realLen == 0)
+            {
+                throw new ArgumentException(SR.Argument_IdnIllegalName, nameof(ascii));
+            }
+            else if (realLen <= outputLength)
+            {
+                return new string(output, 0, realLen);
+            }
+            else if (reattempt)
+            {
+                char[] newOutput = new char[realLen];
+                fixed (char* pNewOutput = newOutput)
                 {
-                    return new string(buf, 0, realLen);
+                    return GetUnicodeCore(ascii, count, flags, pNewOutput, realLen, reattempt: false);
                 }
-
-                buf = new char[realLen];
             }
 
             throw new ArgumentException(SR.Argument_IdnIllegalName, nameof(ascii));
@@ -82,11 +113,11 @@ namespace System.Globalization
         /// To match Windows behavior, we walk the string ourselves looking for these
         /// bad characters so we can continue to throw ArgumentException in these cases. 
         /// </summary>
-        private static void CheckInvalidIdnCharacters(string s, uint flags, string paramName)
+        private static unsafe void CheckInvalidIdnCharacters(char* s, int count, uint flags, string paramName)
         {
             if ((flags & Interop.GlobalizationNative.UseStd3AsciiRules) == 0)
             {
-                for (int i = 0; i < s.Length; i++)
+                for (int i = 0; i < count; i++)
                 {
                     char c = s[i];
 

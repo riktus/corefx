@@ -3,7 +3,7 @@ syntax: glob
 ### VisualStudio ###
 
 # Tool Runtime Dir
-[Tt]ools/
+/[Tt]ools/
 
 # User-specific files
 *.suo
@@ -23,6 +23,8 @@ bld/
 [Bb]in/
 [Oo]bj/
 msbuild.log
+msbuild.err
+msbuild.wrn
 
 # Cross building rootfs
 cross/rootfs/
@@ -83,6 +85,7 @@ ipch/
 *.opensdf
 *.sdf
 *.cachefile
+*.VC.db
 
 # Visual Studio profiler
 *.psess
@@ -257,3 +260,10 @@ Temporary Items
 Session.vim
 .netrwhist
 *~
+
+# Visual Studio Code
+.vscode/
+
+# Private test configuration and binaries.
+config.ps1
+**/IISApplications

@@ -4,11 +4,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ref\System.Security.Cryptography.OpenSsl.csproj">
-      <SupportedFramework>netstandardapp1.5;net461;netcore50</SupportedFramework>
+      <SupportedFramework>net463;netcoreapp1.0;$(AllXamarinFrameworks)</SupportedFramework>
     </ProjectReference>
     <ProjectReference Include="..\src\System.Security.Cryptography.OpenSsl.builds" />
 
-    <ProjectReference Include="$(NativePackagePath)\runtime.native.System.Security.Cryptography\runtime.native.System.Security.Cryptography.pkgproj" />
   </ItemGroup>
 
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" />

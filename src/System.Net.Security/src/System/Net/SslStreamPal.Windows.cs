@@ -101,7 +101,10 @@ namespace System.Net
             if (!isServer)
             {
                 direction = Interop.SspiCli.CredentialUse.Outbound;
-                flags = Interop.SspiCli.SecureCredential.Flags.ValidateManual | Interop.SspiCli.SecureCredential.Flags.NoDefaultCred;
+                flags = 
+                    Interop.SspiCli.SecureCredential.Flags.ValidateManual | 
+                    Interop.SspiCli.SecureCredential.Flags.NoDefaultCred | 
+                    Interop.SspiCli.SecureCredential.Flags.SendAuxRecord;
 
                 // CoreFX: always opt-in SCH_USE_STRONG_CRYPTO except for SSL3.
                 if (((protocolFlags & (Interop.SChannel.SP_PROT_TLS1_0 | Interop.SChannel.SP_PROT_TLS1_1 | Interop.SChannel.SP_PROT_TLS1_2)) != 0)
@@ -113,7 +116,7 @@ namespace System.Net
             else
             {
                 direction = Interop.SspiCli.CredentialUse.Inbound;
-                flags = Interop.SspiCli.SecureCredential.Flags.Zero;
+                flags = Interop.SspiCli.SecureCredential.Flags.SendAuxRecord;
             }
 
             Interop.SspiCli.SecureCredential secureCredential = CreateSecureCredential(
@@ -126,8 +129,38 @@ namespace System.Net
             return AcquireCredentialsHandle(direction, secureCredential);
         }
 
-        public static SecurityStatusPal EncryptMessage(SafeDeleteContext securityContext, byte[] writeBuffer, int size, int headerSize, int trailerSize, out int resultSize)
+        public static SecurityStatusPal EncryptMessage(SafeDeleteContext securityContext, byte[] input, int offset, int size, int headerSize, int trailerSize, ref byte[] output, out int resultSize)
         {
+            // Ensure that there is sufficient space for the message output.
+            try
+            {
+                int bufferSizeNeeded = checked(size + headerSize + trailerSize);
+
+                if (output == null || output.Length < bufferSizeNeeded)
+                {
+                    output = new byte[bufferSizeNeeded];
+                }
+            }
+            catch (Exception e)
+            {
+                if (!ExceptionCheck.IsFatal(e))
+                {
+                    if (GlobalLog.IsEnabled)
+                    {
+                        GlobalLog.Assert("SslStreamPal.Windows: SecureChannel#" + LoggingHash.HashString(securityContext) + "::Encrypt", "Arguments out of range.");
+                    }
+
+                    Debug.Fail("SslStreamPal.Windows: SecureChannel#" + LoggingHash.HashString(securityContext) + "::Encrypt", "Arguments out of range.");
+                }
+
+                throw;
+            }
+
+            byte[] writeBuffer = output;
+
+            // Copy the input into the output buffer to prepare for SCHANNEL's expectations
+            Buffer.BlockCopy(input, offset, writeBuffer, headerSize, size);
+
             // Encryption using SCHANNEL requires 4 buffers: header, payload, trailer, empty.
             SecurityBuffer[] securityBuffer = new SecurityBuffer[4];
 

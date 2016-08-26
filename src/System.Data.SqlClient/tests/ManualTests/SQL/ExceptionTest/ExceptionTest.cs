@@ -19,11 +19,22 @@ namespace System.Data.SqlClient.ManualTesting.Tests
         private const string warningInfoMessage = "Test of info messages";
         private const string orderIdQuery = "select orderid from orders where orderid < 10250";
 
-        [Fact]
+#if MANAGED_SNI
+        [CheckConnStrSetupFact]
+        public static void NonWindowsIntAuthFailureTest()
+        {
+            string connectionString = (new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr) { IntegratedSecurity = true }).ConnectionString;
+            Assert.Throws<NotSupportedException>(() => new SqlConnection(connectionString).Open());
+
+            // Should not receive any exception when using IntAuth=false
+            connectionString = (new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr) { IntegratedSecurity = false }).ConnectionString;
+            new SqlConnection(connectionString).Open();
+        }
+#endif
+
+        [CheckConnStrSetupFact]
         public static void WarningTest()
         {
-            string connectionString = DataTestClass.SQL2008_Northwind;
-
             Action<object, SqlInfoMessageEventArgs> warningCallback =
                 (object sender, SqlInfoMessageEventArgs imevent) =>
                 {
@@ -34,7 +45,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
                 };
 
             SqlInfoMessageEventHandler handler = new SqlInfoMessageEventHandler(warningCallback);
-            using (SqlConnection sqlConnection = new SqlConnection(connectionString + ";pooling=false;"))
+            using (SqlConnection sqlConnection = new SqlConnection((new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr) { Pooling = false }).ConnectionString))
             {
                 sqlConnection.InfoMessage += handler;
                 sqlConnection.Open();
@@ -47,10 +58,9 @@ namespace System.Data.SqlClient.ManualTesting.Tests
             }
         }
 
-        [Fact]
+        [CheckConnStrSetupFact]
         public static void WarningsBeforeRowsTest()
         {
-            string connectionString = DataTestClass.SQL2008_Northwind;
             bool hitWarnings = false;
 
             int iteration = 0;
@@ -65,7 +75,7 @@ namespace System.Data.SqlClient.ManualTesting.Tests
                 };
 
             SqlInfoMessageEventHandler handler = new SqlInfoMessageEventHandler(warningCallback);
-            SqlConnection sqlConnection = new SqlConnection(connectionString);
+            SqlConnection sqlConnection = new SqlConnection(DataTestUtility.TcpConnStr);
             sqlConnection.InfoMessage += handler;
             sqlConnection.Open();
             foreach (string orderClause in new string[] { "", " order by FirstName" })
@@ -133,11 +143,10 @@ namespace System.Data.SqlClient.ManualTesting.Tests
             return true;
         }
 
-        [Fact]
+        [CheckConnStrSetupFact]
         public static void ExceptionTests()
         {
-            string connectionString = DataTestClass.SQL2008_Northwind;
-            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connectionString);
+            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr);
 
             // tests improper server name thrown from constructor of tdsparser
             SqlConnectionStringBuilder badBuilder = new SqlConnectionStringBuilder(builder.ConnectionString) { DataSource = badServer, ConnectTimeout = 1 };
@@ -163,12 +172,10 @@ namespace System.Data.SqlClient.ManualTesting.Tests
             VerifyConnectionFailure<SqlException>(() => GenerateConnectionException(badBuilder.ConnectionString), errorMessage, (ex) => VerifyException(ex, 1, 18456, 1, 14));
         }
 
-        [Fact]
+        [CheckConnStrSetupFact]
         public static void VariousExceptionTests()
         {
-            string connectionString = DataTestClass.SQL2008_Northwind;
-
-            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connectionString);
+            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr);
 
 
             // Test 1 - A
@@ -191,12 +198,10 @@ namespace System.Data.SqlClient.ManualTesting.Tests
             }
         }
 
-        [Fact]
+        [CheckConnStrSetupFact]
         public static void IndependentConnectionExceptionTest()
         {
-            string connectionString = DataTestClass.SQL2008_Northwind;
-
-            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connectionString);
+            SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(DataTestUtility.TcpConnStr);
 
             SqlConnectionStringBuilder badBuilder = new SqlConnectionStringBuilder(builder.ConnectionString) { DataSource = badServer, ConnectTimeout = 1 };
             using (var sqlConnection = new SqlConnection(badBuilder.ConnectionString))

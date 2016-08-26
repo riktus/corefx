@@ -1,5 +1,6 @@
-﻿// Copyright(c) Microsoft.All rights reserved.
-// Licensed under the MIT license.See LICENSE file in the project root for full license information.
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
 using Xunit;
@@ -22,15 +23,12 @@ namespace System.Collections.Tests
             return Convert.ToBase64String(bytes1);
         }
 
-        protected override string CreateTValue(int seed)
-        {
-            return CreateTKey(seed);
-        }
+        protected override string CreateTValue(int seed) => CreateTKey(seed);
     }
 
     public class SortedList_Generic_Tests_int_int : SortedList_Generic_Tests<int, int>
     {
-        protected override bool DefaultValueAllowed { get { return true; } }
+        protected override bool DefaultValueAllowed => true;
         protected override KeyValuePair<int, int> CreateT(int seed)
         {
             Random rand = new Random(seed);
@@ -43,10 +41,7 @@ namespace System.Collections.Tests
             return rand.Next();
         }
 
-        protected override int CreateTValue(int seed)
-        {
-            return CreateTKey(seed);
-        }
+        protected override int CreateTValue(int seed) => CreateTKey(seed);
     }
 
     [OuterLoop]

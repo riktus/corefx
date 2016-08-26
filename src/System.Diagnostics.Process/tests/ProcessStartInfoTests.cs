@@ -345,5 +345,92 @@ namespace System.Diagnostics.Tests
                 Assert.True(p.WaitForExit(WaitInMS));
             }
         }
+
+        [Fact, PlatformSpecific(PlatformID.Windows), OuterLoop] // Requires admin privileges
+        public void TestUserCredentialsPropertiesOnWindows()
+        {
+            string username = "test", password = "PassWord123!!";
+            try
+            {
+                Interop.NetUserAdd(username, password);
+            }
+            catch (Exception exc)
+            {
+                Console.Error.WriteLine("TestUserCredentialsPropertiesOnWindows: NetUserAdd failed: {0}", exc.Message);
+                return; // test is irrelevant if we can't add a user
+            }
+
+            bool hasStarted = false;
+            SafeProcessHandle handle = null;
+            Process p = null;
+
+            try
+            {
+                p = CreateProcessLong();
+
+                p.StartInfo.LoadUserProfile = true;
+                p.StartInfo.UserName = username;
+                p.StartInfo.PasswordInClearText = password;
+
+                hasStarted = p.Start();
+
+                if (Interop.OpenProcessToken(p.SafeHandle, 0x8u, out handle))
+                {
+                    SecurityIdentifier sid;
+                    if (Interop.ProcessTokenToSid(handle, out sid))
+                    {
+                        string actualUserName = sid.Translate(typeof(NTAccount)).ToString();
+                        int indexOfDomain = actualUserName.IndexOf('\\');
+                        if (indexOfDomain != -1)
+                            actualUserName = actualUserName.Substring(indexOfDomain + 1);
+
+                        bool isProfileLoaded = GetNamesOfUserProfiles().Any(profile => profile.Equals(username));
+
+                        Assert.Equal(username, actualUserName);
+                        Assert.True(isProfileLoaded);
+                    }
+                }
+            }
+            finally
+            {
+                IEnumerable<uint> collection = new uint[] { 0 /* NERR_Success */, 2221 /* NERR_UserNotFound */ };
+                Assert.Contains<uint>(Interop.NetUserDel(null, username), collection);
+
+                if (handle != null)
+                    handle.Dispose();
+
+                if (hasStarted)
+                {
+                    if (!p.HasExited)
+                        p.Kill();
+
+                    Assert.True(p.WaitForExit(WaitInMS));
+                }
+            }
+        }
+
+        private static List<string> GetNamesOfUserProfiles()
+        {
+            List<string> userNames = new List<string>();
+
+            string[] names = Registry.Users.GetSubKeyNames();
+            for (int i = 1; i < names.Length; i++)
+            {
+                try
+                {
+                    SecurityIdentifier sid = new SecurityIdentifier(names[i]);
+                    string userName = sid.Translate(typeof(NTAccount)).ToString();
+                    int indexofDomain = userName.IndexOf('\\');
+                    if (indexofDomain != -1)
+                    {
+                        userName = userName.Substring(indexofDomain + 1);
+                        userNames.Add(userName);
+                    }
+                }
+                catch (Exception) { }
+            }
+
+            return userNames;
+        }
     }
 }

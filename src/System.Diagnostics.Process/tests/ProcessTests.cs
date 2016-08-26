@@ -3,10 +3,13 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Xunit;
+using Xunit.NetCore.Extensions;
 
 namespace System.Diagnostics.Tests
 {
@@ -51,7 +54,8 @@ namespace System.Diagnostics.Tests
             }
         }
 
-        [Fact, PlatformSpecific(PlatformID.Windows)]
+        [ConditionalFact(nameof(PlatformDetection) + "." + nameof(PlatformDetection.IsNotWindowsNanoServer))]
+        [PlatformSpecific(PlatformID.Windows)]
         public void TestBasePriorityOnWindows()
         {
             ProcessPriorityClass originalPriority = _process.PriorityClass;
@@ -75,7 +79,10 @@ namespace System.Diagnostics.Tests
             }
         }
 
-        [Fact, PlatformSpecific(PlatformID.AnyUnix), OuterLoop] // This test requires admin elevation on Unix
+        [Fact] 
+        [PlatformSpecific(PlatformID.AnyUnix)]
+        [OuterLoop]
+        [Trait(XunitConstants.Category, XunitConstants.RequiresElevation)]
         public void TestBasePriorityOnUnix()
         {
             ProcessPriorityClass originalPriority = _process.PriorityClass;
@@ -213,7 +220,6 @@ namespace System.Diagnostics.Tests
             Assert.NotNull(_process.MachineName);
         }
 
-        [ActiveIssue(6677, PlatformID.OSX)]
         [Fact]
         public void TestMainModuleOnNonOSX()
         {
@@ -298,7 +304,6 @@ namespace System.Diagnostics.Tests
             }
         }
 
-        [ActiveIssue(6677, PlatformID.OSX)]
         [Fact]
         public void TestModules()
         {
@@ -307,12 +312,12 @@ namespace System.Diagnostics.Tests
             {
                 // Validated that we can get a value for each of the following.
                 Assert.NotNull(pModule);
-                Assert.NotEqual(IntPtr.Zero, pModule.BaseAddress);
                 Assert.NotNull(pModule.FileName);
                 Assert.NotNull(pModule.ModuleName);
 
                 // Just make sure these don't throw
-                IntPtr addr = pModule.EntryPointAddress;
+                IntPtr baseAddr = pModule.BaseAddress;
+                IntPtr entryAddr = pModule.EntryPointAddress;
                 int memSize = pModule.ModuleMemorySize;
             }
         }
@@ -447,7 +452,10 @@ namespace System.Diagnostics.Tests
             }
         }
 
-        [Fact, PlatformSpecific(PlatformID.AnyUnix), OuterLoop] // This test requires admin elevation on Unix
+        [Fact] 
+        [PlatformSpecific(PlatformID.AnyUnix)]
+        [OuterLoop]
+        [Trait(XunitConstants.Category, XunitConstants.RequiresElevation)]
         public void TestPriorityClassUnix()
         {
             ProcessPriorityClass priorityClass = _process.PriorityClass;
@@ -493,7 +501,7 @@ namespace System.Diagnostics.Tests
         [Fact]
         public void TestProcessName()
         {
-            Assert.Equal(_process.ProcessName, HostRunner, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(Path.GetFileNameWithoutExtension(_process.ProcessName), Path.GetFileNameWithoutExtension(HostRunner), StringComparer.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -575,7 +583,23 @@ namespace System.Diagnostics.Tests
             yield return new object[] { currentProcess, Process.GetProcessesByName(currentProcess.ProcessName, "127.0.0.1").Where(p => p.Id == currentProcess.Id).Single() };
         }
 
-        [Theory, PlatformSpecific(PlatformID.Windows)]
+        private static bool ProcessPeformanceCounterEnabled()
+        {
+            try
+            {
+                int? value = (int?)Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PerfProc\Performance", "Disable Performance Counters", null);
+                return !value.HasValue || value.Value == 0;
+            }
+            catch (Exception)
+            {
+                // Ignore exceptions, and just assume the counter is enabled.
+            }
+
+            return true;
+        }
+
+        [PlatformSpecific(PlatformID.Windows)]
+        [ConditionalTheory(nameof(ProcessPeformanceCounterEnabled))]
         [MemberData(nameof(GetTestProcess))]
         public void TestProcessOnRemoteMachineWindows(Process currentProcess, Process remoteProcess)
         {
@@ -635,7 +659,6 @@ namespace System.Diagnostics.Tests
                 Assert.Throws<System.InvalidOperationException>(() => process.StartInfo);
             }
         }
-
         [Theory]
         [InlineData(@"""abc"" d e", @"abc,d,e")]
         [InlineData(@"""abc""      d e", @"abc,d,e")]
@@ -681,5 +704,68 @@ namespace System.Diagnostics.Tests
             GC.WaitForPendingFinalizers();
             Assert.True(FinalizingProcess.WasFinalized);
         }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void TestStartWithMissingFile(bool fullPath)
+        {
+            string path = Guid.NewGuid().ToString("N");
+            if (fullPath)
+            {
+                path = Path.GetFullPath(path);
+                Assert.True(Path.IsPathRooted(path));
+            }
+            else
+            {
+                Assert.False(Path.IsPathRooted(path));
+            }
+            Assert.False(File.Exists(path));
+
+            Win32Exception e = Assert.Throws<Win32Exception>(() => Process.Start(path));
+            Assert.NotEqual(0, e.NativeErrorCode);
+        }
+
+        [PlatformSpecific(PlatformID.Windows)]
+        // NativeErrorCode not 193 on Windows Nano for ERROR_BAD_EXE_FORMAT, issue #10290
+        [ConditionalFact(nameof(PlatformDetection) + "." + nameof(PlatformDetection.IsNotWindowsNanoServer))]
+        public void TestStartOnWindowsWithBadFileFormat()
+        {
+            string path = GetTestFilePath();
+            File.Create(path).Dispose();
+
+            Win32Exception e = Assert.Throws<Win32Exception>(() => Process.Start(path));
+            Assert.NotEqual(0, e.NativeErrorCode);
+        }
+
+        [PlatformSpecific(PlatformID.AnyUnix)]
+        [Fact]
+        public void TestStartOnUnixWithBadPermissions()
+        {
+            string path = GetTestFilePath();
+            File.Create(path).Dispose();
+            Assert.Equal(0, chmod(path, 644)); // no execute permissions
+
+            Win32Exception e = Assert.Throws<Win32Exception>(() => Process.Start(path));
+            Assert.NotEqual(0, e.NativeErrorCode);
+        }
+
+        [PlatformSpecific(PlatformID.AnyUnix)]
+        [Fact]
+        public void TestStartOnUnixWithBadFormat()
+        {
+            string path = GetTestFilePath();
+            File.Create(path).Dispose();
+            Assert.Equal(0, chmod(path, 744)); // execute permissions
+
+            using (Process p = Process.Start(path))
+            {
+                p.WaitForExit();
+                Assert.NotEqual(0, p.ExitCode);
+            }
+        }
+
+        [DllImport("libc")]
+        private static extern int chmod(string path, int mode);
     }
 }

@@ -101,6 +101,17 @@ namespace System.Linq.Expressions.Tests
             }
         }
 
+        private class ReducesFromStrangeNodeType : Expression
+        {
+            public override Type Type => typeof(int);
+
+            public override ExpressionType NodeType => (ExpressionType)(-1);
+
+            public override bool CanReduce => true;
+
+            public override Expression Reduce() => Constant(3);
+        }
+
         private class ObsoleteIncompleteExpressionOverride : Expression
         {
 #pragma warning disable 0618 // Testing obsolete behaviour.
@@ -109,6 +120,20 @@ namespace System.Linq.Expressions.Tests
             {
             }
 #pragma warning restore 0618
+        }
+
+        private class IrreducibleWithTypeAndNodeType : Expression
+        {
+            public override Type Type => typeof(void);
+
+            public override ExpressionType NodeType => ExpressionType.Extension;
+        }
+
+        private class IrreduceibleWithTypeAndStrangeNodeType : Expression
+        {
+            public override Type Type => typeof(void);
+
+            public override ExpressionType NodeType => (ExpressionType)(-1);
         }
 
         public static IEnumerable<object[]> AllNodeTypesPlusSomeInvalid
@@ -197,7 +222,7 @@ namespace System.Linq.Expressions.Tests
         public void VisitChildrenThrowsAsNotReducible()
         {
             var exp = new IncompleteExpressionOverride();
-            Assert.Throws<ArgumentException>(() => exp.VisitChildren());
+            Assert.Throws<ArgumentException>(null, () => exp.VisitChildren());
         }
 
         [Fact]
@@ -217,42 +242,42 @@ namespace System.Linq.Expressions.Tests
         public void ReduceAndCheckThrowsByDefault()
         {
             var exp = new IncompleteExpressionOverride();
-            Assert.Throws<ArgumentException>(() => exp.ReduceAndCheck());
+            Assert.Throws<ArgumentException>(null, () => exp.ReduceAndCheck());
         }
 
         [Fact]
         public void ReduceExtensionsThrowsByDefault()
         {
             var exp = new IncompleteExpressionOverride();
-            Assert.Throws<ArgumentException>(() => exp.ReduceAndCheck());
+            Assert.Throws<ArgumentException>(null, () => exp.ReduceAndCheck());
         }
 
         [Fact]
         public void IfClaimCanReduceMustReduce()
         {
             var exp = new ClaimedReducibleOverride();
-            Assert.Throws<ArgumentException>(() => exp.Reduce());
+            Assert.Throws<ArgumentException>(null, () => exp.Reduce());
         }
 
         [Fact]
         public void ReduceAndCheckThrowOnReduceToSame()
         {
             var exp = new ReducesToSame();
-            Assert.Throws<ArgumentException>(() => exp.ReduceAndCheck());
+            Assert.Throws<ArgumentException>(null, () => exp.ReduceAndCheck());
         }
 
         [Fact]
         public void ReduceAndCheckThrowOnReduceToNull()
         {
             var exp = new ReducesToNull();
-            Assert.Throws<ArgumentException>(() => exp.ReduceAndCheck());
+            Assert.Throws<ArgumentException>(null, () => exp.ReduceAndCheck());
         }
 
         [Fact]
         public void ReduceAndCheckThrowOnReducedTypeNotAssignable()
         {
             var exp = new ReducesToLongTyped();
-            Assert.Throws<ArgumentException>(() => exp.ReduceAndCheck());
+            Assert.Throws<ArgumentException>(null, () => exp.ReduceAndCheck());
         }
 
 #pragma warning disable 0169, 0414 // Accessed through reflection.
@@ -389,6 +414,27 @@ namespace System.Linq.Expressions.Tests
         public void ConfirmCanWrite(Expression writableExpression)
         {
             Expression.Assign(writableExpression, Expression.Default(writableExpression.Type));
+        }
+
+        [Theory, ClassData(typeof(CompilationTypes))]
+        public void CompileIrreduciebleExtension(bool useInterpreter)
+        {
+            var exp = Expression.Lambda<Action>(new IrreducibleWithTypeAndNodeType());
+            Assert.Throws<ArgumentException>(null, () => exp.Compile(useInterpreter));
+        }
+
+        [Theory, ClassData(typeof(CompilationTypes))]
+        public void CompileIrreduciebleStrangeNodeTypeExtension(bool useInterpreter)
+        {
+            var exp = Expression.Lambda<Action>(new IrreduceibleWithTypeAndStrangeNodeType());
+            Assert.Throws<ArgumentException>(null, () => exp.Compile(useInterpreter));
+        }
+
+        [Theory, ClassData(typeof(CompilationTypes))]
+        public void CompileReducibleStrangeNodeTypeExtension(bool useInterpreter)
+        {
+            var exp = Expression.Lambda<Func<int>>(new ReducesFromStrangeNodeType());
+            Assert.Equal(3, exp.Compile(useInterpreter)());
         }
     }
 }

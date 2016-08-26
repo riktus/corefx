@@ -38,7 +38,12 @@ namespace System.IO.Tests
             var paths = IOInputs.GetPathsWithInvalidCharacters();
             Assert.All(paths, (path) =>
             {
-                Assert.Throws<ArgumentException>(() => Create(path));
+                if (path.Equals(@"\\?\"))
+                    Assert.Throws<IOException>(() => Create(path));
+                else if (path.Contains(@"\\?\"))
+                    Assert.Throws<DirectoryNotFoundException>(() => Create(path));
+                else
+                    Assert.Throws<ArgumentException>(() => Create(path));
             });
         }
 
@@ -468,7 +473,14 @@ namespace System.IO.Tests
             var current = Create(".");
             Assert.Equal("C:", driveLetter.Name);
             Assert.Equal(Path.Combine(current.FullName, "C:"), driveLetter.FullName);
-            Directory.Delete("C:");
+            try
+            {
+                // If this test is inherited then it's possible this call will fail due to the "C:" directory
+                // being deleted in that other test before this call. What we care about testing (proper path 
+                // handling) is unaffected by this race condition.
+                Directory.Delete("C:");
+            }
+            catch (DirectoryNotFoundException) { }
         }
 
         [Fact]

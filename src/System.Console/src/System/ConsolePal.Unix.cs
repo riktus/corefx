@@ -57,8 +57,7 @@ namespace System
                     Console.EnsureInitialized(
                         ref s_stdInReader,
                         () => SyncTextReader.GetSynchronizedTextReader(
-                            new StdInStreamReader(
-                                stream: OpenStandardInput(),
+                            new StdInReader(
                                 encoding: new ConsoleEncoding(Console.InputEncoding), // This ensures no prefix is written to the stream.
                                 bufferSize: DefaultBufferSize)));
             }
@@ -125,9 +124,8 @@ namespace System
             }
         }
 
-        private const ConsoleColor UnknownColor = (ConsoleColor)(-1);
-        private static ConsoleColor s_trackedForegroundColor = UnknownColor;
-        private static ConsoleColor s_trackedBackgroundColor = UnknownColor;
+        private static ConsoleColor s_trackedForegroundColor = Console.UnknownColor;
+        private static ConsoleColor s_trackedBackgroundColor = Console.UnknownColor;
 
         public static ConsoleColor ForegroundColor
         {
@@ -145,8 +143,8 @@ namespace System
         {
             lock (Console.Out) // synchronize with other writers
             {
-                s_trackedForegroundColor = UnknownColor;
-                s_trackedBackgroundColor = UnknownColor;
+                s_trackedForegroundColor = Console.UnknownColor;
+                s_trackedBackgroundColor = Console.UnknownColor;
                 WriteResetColorString();
             }
         }
@@ -353,7 +351,7 @@ namespace System
                     // Read the response.  There's a race condition here if the user is typing,
                     // or if other threads are accessing the console; there's relatively little
                     // we can do about that, but we try not to lose any data.
-                    StdInStreamReader r = StdInReader.Inner;
+                    StdInReader r = StdInReader.Inner;
                     const int BufferSize = 1024;
                     byte* bytes = stackalloc byte[BufferSize];
 
@@ -406,7 +404,7 @@ namespace System
         /// <summary>Reads from the stdin reader, unbuffered, until the specified condition is met.</summary>
         /// <returns>true if the condition was met; otherwise, false.</returns>
         private static unsafe bool ReadStdinUntil(
-            StdInStreamReader reader, 
+            StdInReader reader, 
             byte* buffer, int bufferSize, 
             ref int bytesRead, ref int pos, 
             Func<byte, bool> condition)
@@ -504,7 +502,7 @@ namespace System
         /// </summary>
         private static void RefreshColors(ref ConsoleColor toChange, ConsoleColor value)
         {
-            if (((int)value & ~0xF) != 0 && value != UnknownColor)
+            if (((int)value & ~0xF) != 0 && value != Console.UnknownColor)
             {
                 throw new ArgumentException(SR.Arg_InvalidConsoleColor);
             }
@@ -515,12 +513,12 @@ namespace System
 
                 WriteResetColorString();
 
-                if (s_trackedForegroundColor != UnknownColor)
+                if (s_trackedForegroundColor != Console.UnknownColor)
                 {
                     WriteSetColorString(foreground: true, color: s_trackedForegroundColor);
                 }
 
-                if (s_trackedBackgroundColor != UnknownColor)
+                if (s_trackedBackgroundColor != Console.UnknownColor)
                 {
                     WriteSetColorString(foreground: false, color: s_trackedBackgroundColor);
                 }
@@ -724,7 +722,7 @@ namespace System
         {
             /// <summary>Gets the lazily-initialized terminal information for the terminal.</summary>
             public static TerminalFormatStrings Instance { get { return s_instance.Value; } }
-            private static Lazy<TerminalFormatStrings> s_instance = new Lazy<TerminalFormatStrings>(() => new TerminalFormatStrings(TermInfo.Database.ReadActiveDatabase()));
+            private readonly static Lazy<TerminalFormatStrings> s_instance = new Lazy<TerminalFormatStrings>(() => new TerminalFormatStrings(TermInfo.Database.ReadActiveDatabase()));
 
             /// <summary>The format string to use to change the foreground color.</summary>
             public readonly string Foreground;
@@ -765,13 +763,13 @@ namespace System
             /// The dictionary of keystring to ConsoleKeyInfo.
             /// Only some members of the ConsoleKeyInfo are used; in particular, the actual char is ignored.
             /// </summary>
-            public Dictionary<StringOrCharArray, ConsoleKeyInfo> KeyFormatToConsoleKey;
+            public readonly Dictionary<StringOrCharArray, ConsoleKeyInfo> KeyFormatToConsoleKey = new Dictionary<StringOrCharArray, ConsoleKeyInfo>();
             /// <summary> Max key length </summary>
-            public int MaxKeyFormatLength;
+            public readonly int MaxKeyFormatLength;
             /// <summary> Min key length </summary>
-            public int MinKeyFormatLength;
+            public readonly int MinKeyFormatLength;
             /// <summary>The ANSI string used to enter "application" / "keypad transmit" mode.</summary>
-            public string KeypadXmit;
+            public readonly string KeypadXmit;
 
             public TerminalFormatStrings(TermInfo.Database db)
             {
@@ -803,7 +801,6 @@ namespace System
                     maxColors >= 8 ? 8 :
                     0;
 
-                KeyFormatToConsoleKey = new Dictionary<StringOrCharArray, ConsoleKeyInfo>();
                 AddKey(db, TermInfo.WellKnownStrings.KeyF1, ConsoleKey.F1);
                 AddKey(db, TermInfo.WellKnownStrings.KeyF2, ConsoleKey.F2);
                 AddKey(db, TermInfo.WellKnownStrings.KeyF3, ConsoleKey.F3);

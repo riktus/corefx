@@ -4,6 +4,8 @@
 
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace System.Diagnostics
@@ -11,10 +13,10 @@ namespace System.Diagnostics
     /// <summary>Base class used for all tests that need to spawn a remote process.</summary>
     public abstract class RemoteExecutorTestBase : FileCleanupTestBase
     {
-        /// <summary>The CoreCLR host used to host the test console app.</summary>
-        protected const string HostRunner = "corerun";
         /// <summary>The name of the test console app.</summary>
         protected const string TestConsoleApp = "RemoteExecutorConsoleApp.exe";
+        /// <summary>The CoreCLR host used to host the test console app.</summary>
+        protected static readonly string HostRunner = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "CoreRun.exe" : "corerun";
 
         /// <summary>A timeout (milliseconds) after which a wait on a remote operation should be considered a failure.</summary>
         internal const int FailWaitTimeoutMilliseconds = 30 * 1000;
@@ -26,6 +28,16 @@ namespace System.Diagnostics
         /// <param name="options">Options to use for the invocation.</param>
         internal static RemoteInvokeHandle RemoteInvoke(
             Func<int> method, 
+            RemoteInvokeOptions options = null)
+        {
+            return RemoteInvoke(method.GetMethodInfo(), Array.Empty<string>(), options);
+        }
+
+        /// <summary>Invokes the method from this assembly in another process using the specified arguments.</summary>
+        /// <param name="method">The method to invoke.</param>
+        /// <param name="options">Options to use for the invocation.</param>
+        internal static RemoteInvokeHandle RemoteInvoke(
+            Func<Task<int>> method,
             RemoteInvokeOptions options = null)
         {
             return RemoteInvoke(method.GetMethodInfo(), Array.Empty<string>(), options);
@@ -91,7 +103,7 @@ namespace System.Diagnostics
 
             // Verify the specified method is and that it returns an int (the exit code),
             // and that if it accepts any arguments, they're all strings.
-            Assert.Equal(typeof(int), method.ReturnType);
+            Assert.True(method.ReturnType == typeof(int) || method.ReturnType == typeof(Task<int>));
             Assert.All(method.GetParameters(), pi => Assert.Equal(typeof(string), pi.ParameterType));
 
             // And make sure it's in this assembly.  This isn't critical, but it helps with deployment to know
@@ -102,8 +114,6 @@ namespace System.Diagnostics
 
             // Start the other process and return a wrapper for it to handle its lifetime and exit checking.
             var psi = options.StartInfo;
-            psi.FileName = HostRunner;
-            psi.Arguments = TestConsoleApp + " \"" + a.FullName + "\" " + t.FullName + " " + method.Name + " " + string.Join(" ", args);
             psi.UseShellExecute = false;
 
             if (!options.EnableProfiling)
@@ -116,6 +126,19 @@ namespace System.Diagnostics
                 psi.Environment.Remove("Cor_Enable_Profiling");
                 psi.Environment.Remove("CoreClr_Profiler");
                 psi.Environment.Remove("CoreClr_Enable_Profiling");
+            }
+
+            // If we need the host (if it exists), use it, otherwise target the console app directly.
+            string testConsoleAppArgs = "\"" + a.FullName + "\" " + t.FullName + " " + method.Name + " " + string.Join(" ", args);
+            if (File.Exists(HostRunner))
+            {
+                psi.FileName = HostRunner;
+                psi.Arguments = TestConsoleApp + " " + testConsoleAppArgs;
+            }
+            else
+            {
+                psi.FileName = TestConsoleApp;
+                psi.Arguments = testConsoleAppArgs;
             }
 
             // Return the handle to the process, which may or not be started

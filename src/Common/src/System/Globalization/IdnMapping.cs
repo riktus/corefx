@@ -30,7 +30,7 @@ namespace System.Globalization
 {
     // IdnMapping class used to map names to Punycode
 #if INTERNAL_GLOBALIZATION_EXTENSIONS
-    internal 
+    internal
 #else
     public
 #endif
@@ -63,7 +63,7 @@ namespace System.Globalization
 
         public string GetAscii(string unicode, int index)
         {
-            if (unicode == null) 
+            if (unicode == null)
                 throw new ArgumentNullException(nameof(unicode));
             Contract.EndContractBlock();
             return GetAscii(unicode, index, unicode.Length - index);
@@ -71,7 +71,7 @@ namespace System.Globalization
 
         public string GetAscii(string unicode, int index, int count)
         {
-            if (unicode == null) 
+            if (unicode == null)
                 throw new ArgumentNullException(nameof(unicode));
             if (index < 0 || count < 0)
                 throw new ArgumentOutOfRangeException((index < 0) ? nameof(index) : nameof(count), SR.ArgumentOutOfRange_NeedNonNegNum);
@@ -81,19 +81,22 @@ namespace System.Globalization
                 throw new ArgumentOutOfRangeException(nameof(unicode), SR.ArgumentOutOfRange_IndexCountBuffer);
             Contract.EndContractBlock();
 
-            // We're only using part of the string
-            unicode = unicode.Substring(index, count);
-
-            if (unicode.Length == 0)
+            if (count == 0)
             {
                 throw new ArgumentException(SR.Argument_IdnBadLabelSize, nameof(unicode));
             }
-            if (unicode[unicode.Length - 1] == 0)
+            if (unicode[index + count - 1] == 0)
             {
-                throw new ArgumentException(SR.Format(SR.Argument_InvalidCharSequence, unicode.Length - 1), nameof(unicode));
+                throw new ArgumentException(SR.Format(SR.Argument_InvalidCharSequence, index + count - 1), nameof(unicode));
             }
 
-            return GetAsciiCore(unicode);
+            unsafe
+            {
+                fixed (char* pUnicode = unicode)
+                {
+                    return GetAsciiCore(pUnicode + index, count);
+                }
+            }
         }
 
         // Gets Unicode version of the string.  Normalized and limited to IDNA characters.
@@ -104,7 +107,7 @@ namespace System.Globalization
 
         public string GetUnicode(string ascii, int index)
         {
-            if (ascii == null) 
+            if (ascii == null)
                 throw new ArgumentNullException(nameof(ascii));
             Contract.EndContractBlock();
             return GetUnicode(ascii, index, ascii.Length - index);
@@ -112,7 +115,7 @@ namespace System.Globalization
 
         public string GetUnicode(string ascii, int index, int count)
         {
-            if (ascii == null) 
+            if (ascii == null)
                 throw new ArgumentNullException(nameof(ascii));
             if (index < 0 || count < 0)
                 throw new ArgumentOutOfRangeException((index < 0) ? nameof(index) : nameof(count), SR.ArgumentOutOfRange_NeedNonNegNum);
@@ -128,16 +131,19 @@ namespace System.Globalization
                 throw new ArgumentException(SR.Argument_IdnBadPunycode, nameof(ascii));
             Contract.EndContractBlock();
 
-            // We're only using part of the string
-            ascii = ascii.Substring(index, count);
-
-            return GetUnicodeCore(ascii);
+            unsafe
+            {
+                fixed (char* pAscii = ascii)
+                {
+                    return GetUnicodeCore(pAscii + index, count);
+                }
+            }
         }
 
         public override bool Equals(object obj)
         {
             IdnMapping that = obj as IdnMapping;
-            return 
+            return
                 that != null &&
                 _allowUnassigned == that._allowUnassigned &&
                 _useStd3AsciiRules == that._useStd3AsciiRules;

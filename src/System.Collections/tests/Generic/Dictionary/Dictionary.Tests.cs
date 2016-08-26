@@ -1,5 +1,4 @@
-﻿// Copyright (c) Justin Van Patten. All rights reserved.
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -34,10 +33,9 @@ namespace System.Collections.Tests
         /// Creates an object that is dependent on the seed given. The object may be either
         /// a value type or a reference type, chosen based on the value of the seed.
         /// </summary>
-        protected override object CreateTValue(int seed)
-        {
-            return CreateTKey(seed);
-        }
+        protected override object CreateTValue(int seed) => CreateTKey(seed);
+
+        protected override Type ICollection_NonGeneric_CopyTo_IndexLargerThanArrayCount_ThrowType => typeof(ArgumentOutOfRangeException);
 
         #region IDictionary tests
 

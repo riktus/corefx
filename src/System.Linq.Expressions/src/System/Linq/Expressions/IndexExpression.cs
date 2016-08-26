@@ -186,7 +186,7 @@ namespace System.Linq.Expressions
             Type arrayType = array.Type;
             if (!arrayType.IsArray)
             {
-                throw Error.ArgumentMustBeArray();
+                throw Error.ArgumentMustBeArray(nameof(array));
             }
 
             var indexList = indexes.ToReadOnly();
@@ -200,7 +200,7 @@ namespace System.Linq.Expressions
                 RequiresCanRead(e, nameof(indexes));
                 if (e.Type != typeof(int))
                 {
-                    throw Error.ArgumentMustBeArrayIndexType();
+                    throw Error.ArgumentMustBeArrayIndexType(nameof(indexes));
                 }
             }
 
@@ -390,57 +390,57 @@ namespace System.Linq.Expressions
             // Accessor parameters cannot be ByRef.
 
             ContractUtils.RequiresNotNull(property, nameof(property));
-            if (property.PropertyType.IsByRef) throw Error.PropertyCannotHaveRefType();
-            if (property.PropertyType == typeof(void)) throw Error.PropertyTypeCannotBeVoid();
+            if (property.PropertyType.IsByRef) throw Error.PropertyCannotHaveRefType(nameof(property));
+            if (property.PropertyType == typeof(void)) throw Error.PropertyTypeCannotBeVoid(nameof(property));
 
             ParameterInfo[] getParameters = null;
             MethodInfo getter = property.GetGetMethod(true);
             if (getter != null)
             {
                 getParameters = getter.GetParametersCached();
-                ValidateAccessor(instance, getter, getParameters, ref argList);
+                ValidateAccessor(instance, getter, getParameters, ref argList, nameof(property));
             }
 
             MethodInfo setter = property.GetSetMethod(true);
             if (setter != null)
             {
                 ParameterInfo[] setParameters = setter.GetParametersCached();
-                if (setParameters.Length == 0) throw Error.SetterHasNoParams();
+                if (setParameters.Length == 0) throw Error.SetterHasNoParams(nameof(property));
 
                 // valueType is the type of the value passed to the setter (last parameter)
                 Type valueType = setParameters[setParameters.Length - 1].ParameterType;
-                if (valueType.IsByRef) throw Error.PropertyCannotHaveRefType();
-                if (setter.ReturnType != typeof(void)) throw Error.SetterMustBeVoid();
-                if (property.PropertyType != valueType) throw Error.PropertyTyepMustMatchSetter();
+                if (valueType.IsByRef) throw Error.PropertyCannotHaveRefType(nameof(property));
+                if (setter.ReturnType != typeof(void)) throw Error.SetterMustBeVoid(nameof(property));
+                if (property.PropertyType != valueType) throw Error.PropertyTypeMustMatchSetter(nameof(property));
 
                 if (getter != null)
                 {
-                    if (getter.IsStatic ^ setter.IsStatic) throw Error.BothAccessorsMustBeStatic();
-                    if (getParameters.Length != setParameters.Length - 1) throw Error.IndexesOfSetGetMustMatch();
+                    if (getter.IsStatic ^ setter.IsStatic) throw Error.BothAccessorsMustBeStatic(nameof(property));
+                    if (getParameters.Length != setParameters.Length - 1) throw Error.IndexesOfSetGetMustMatch(nameof(property));
 
                     for (int i = 0; i < getParameters.Length; i++)
                     {
-                        if (getParameters[i].ParameterType != setParameters[i].ParameterType) throw Error.IndexesOfSetGetMustMatch();
+                        if (getParameters[i].ParameterType != setParameters[i].ParameterType) throw Error.IndexesOfSetGetMustMatch(nameof(property));
                     }
                 }
                 else
                 {
-                    ValidateAccessor(instance, setter, setParameters.RemoveLast(), ref argList);
+                    ValidateAccessor(instance, setter, setParameters.RemoveLast(), ref argList, nameof(property));
                 }
             }
 
             if (getter == null && setter == null)
             {
-                throw Error.PropertyDoesNotHaveAccessor(property);
+                throw Error.PropertyDoesNotHaveAccessor(property, nameof(property));
             }
         }
 
-        private static void ValidateAccessor(Expression instance, MethodInfo method, ParameterInfo[] indexes, ref ReadOnlyCollection<Expression> arguments)
+        private static void ValidateAccessor(Expression instance, MethodInfo method, ParameterInfo[] indexes, ref ReadOnlyCollection<Expression> arguments, string paramName)
         {
             ContractUtils.RequiresNotNull(arguments, nameof(arguments));
 
-            ValidateMethodInfo(method);
-            if ((method.CallingConvention & CallingConventions.VarArgs) != 0) throw Error.AccessorsCannotHaveVarArgs();
+            ValidateMethodInfo(method, nameof(method));
+            if ((method.CallingConvention & CallingConventions.VarArgs) != 0) throw Error.AccessorsCannotHaveVarArgs(nameof(method));
             if (method.IsStatic)
             {
                 if (instance != null) throw Error.OnlyStaticMethodsHaveNullInstance();
@@ -452,16 +452,16 @@ namespace System.Linq.Expressions
                 ValidateCallInstanceType(instance.Type, method);
             }
 
-            ValidateAccessorArgumentTypes(method, indexes, ref arguments);
+            ValidateAccessorArgumentTypes(method, indexes, ref arguments, paramName);
         }
 
-        private static void ValidateAccessorArgumentTypes(MethodInfo method, ParameterInfo[] indexes, ref ReadOnlyCollection<Expression> arguments)
+        private static void ValidateAccessorArgumentTypes(MethodInfo method, ParameterInfo[] indexes, ref ReadOnlyCollection<Expression> arguments, string paramName)
         {
             if (indexes.Length > 0)
             {
                 if (indexes.Length != arguments.Count)
                 {
-                    throw Error.IncorrectNumberOfMethodCallArguments(method);
+                    throw Error.IncorrectNumberOfMethodCallArguments(method, paramName);
                 }
                 Expression[] newArgs = null;
                 for (int i = 0, n = indexes.Length; i < n; i++)
@@ -471,8 +471,8 @@ namespace System.Linq.Expressions
                     RequiresCanRead(arg, nameof(arguments));
 
                     Type pType = pi.ParameterType;
-                    if (pType.IsByRef) throw Error.AccessorsCannotHaveByRefArgs();
-                    TypeUtils.ValidateType(pType);
+                    if (pType.IsByRef) throw Error.AccessorsCannotHaveByRefArgs($"{nameof(indexes)}[{i}]");
+                    TypeUtils.ValidateType(pType, $"{nameof(indexes)}[{i}]");
 
                     if (!TypeUtils.AreReferenceAssignable(pType, arg.Type))
                     {
@@ -501,7 +501,7 @@ namespace System.Linq.Expressions
             }
             else if (arguments.Count > 0)
             {
-                throw Error.IncorrectNumberOfMethodCallArguments(method);
+                throw Error.IncorrectNumberOfMethodCallArguments(method, paramName);
             }
         }
         #endregion

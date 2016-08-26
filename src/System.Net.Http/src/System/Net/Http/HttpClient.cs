@@ -20,8 +20,6 @@ namespace System.Net.Http
         private static readonly TimeSpan s_infiniteTimeout = Threading.Timeout.InfiniteTimeSpan;
         private const HttpCompletionOption defaultCompletionOption = HttpCompletionOption.ResponseContentRead;
 
-        private static readonly Task<string> s_emptyStringTask = Task.FromResult(string.Empty);
-        private static readonly Task<byte[]> s_emptyByteArrayTask = Task.FromResult(Array.Empty<byte>());
         private static readonly Task<Stream> s_nullStreamTask = Task.FromResult(Stream.Null);
 
         private volatile bool _operationStarted;
@@ -139,7 +137,7 @@ namespace System.Net.Http
         {
             return GetContentAsync(
                 GetAsync(requestUri, HttpCompletionOption.ResponseContentRead), 
-                content => content != null ? content.ReadAsStringAsync() : s_emptyStringTask);
+                content => content != null ? content.ReadBufferedContentAsString() : string.Empty);
         }
 
         public Task<byte[]> GetByteArrayAsync(string requestUri)
@@ -151,7 +149,7 @@ namespace System.Net.Http
         {
             return GetContentAsync(
                 GetAsync(requestUri, HttpCompletionOption.ResponseContentRead), 
-                content => content != null ? content.ReadAsByteArrayAsync() : s_emptyByteArrayTask);
+                content => content != null ? content.ReadBufferedContentAsByteArray() : Array.Empty<byte>());
         }
 
 
@@ -167,6 +165,13 @@ namespace System.Net.Http
             return GetContentAsync(
                 GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead), 
                 content => content != null ? content.ReadAsStreamAsync() : s_nullStreamTask);
+        }
+
+        private async Task<T> GetContentAsync<T>(Task<HttpResponseMessage> getTask, Func<HttpContent, T> readAs)
+        {
+            HttpResponseMessage response = await getTask.ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return readAs(response.Content);
         }
 
         private async Task<T> GetContentAsync<T>(Task<HttpResponseMessage> getTask, Func<HttpContent, Task<T>> readAsAsync)
@@ -342,19 +347,8 @@ namespace System.Net.Http
             HttpResponseMessage response = null;
             try
             {
-                try
-                {
-                    // Wait for the send request to complete, getting back the response.
-                    response = await sendTask.ConfigureAwait(false);
-                }
-                finally
-                {
-                    // When a request completes, dispose the request content so the user doesn't have to. This also
-                    // ensures that a HttpContent object is only sent once using HttpClient (similar to HttpRequestMessages
-                    // that can also be sent only once).
-                    request.Content?.Dispose();
-                }
-
+                // Wait for the send request to complete, getting back the response.
+                response = await sendTask.ConfigureAwait(false);
                 if (response == null)
                 {
                     throw new InvalidOperationException(SR.net_http_handler_noresponse);
@@ -389,7 +383,17 @@ namespace System.Net.Http
             }
             finally
             {
-                linkedCts.Dispose();
+                try
+                {
+                    // When a request completes, dispose the request content so the user doesn't have to. This also
+                    // helps ensure that a HttpContent object is only sent once using HttpClient (similar to HttpRequestMessages
+                    // that can also be sent only once).
+                    request.Content?.Dispose();
+                }
+                finally
+                {
+                    linkedCts.Dispose();
+                }
             }
         }
 
